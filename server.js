@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// RUTA 1: DISNEY - ACCESO (INTACTA)
+// RUTA 1: DISNEY - ACCESO 
 // ==========================================
 app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -54,7 +54,7 @@ app.post('/buscar-correo', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 2: DISNEY - HOGAR (INTACTA)
+// RUTA 2: DISNEY - HOGAR 
 // ==========================================
 app.post('/buscar-enlace-hogar', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -100,7 +100,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 3: VIX - ENLACE DE CONTRASEÑA (INTACTA)
+// RUTA 3: VIX - ENLACE DE CONTRASEÑA 
 // ==========================================
 app.post('/buscar-enlace-vix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -157,7 +157,7 @@ app.post('/buscar-enlace-vix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 4: NETFLIX - CÓDIGO DE INICIO (INTACTA)
+// RUTA 4: NETFLIX - CÓDIGO DE INICIO 
 // ==========================================
 app.post('/buscar-codigo-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -203,7 +203,7 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA (INTACTA)
+// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA 
 // ==========================================
 app.post('/buscar-pass-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -262,7 +262,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO (INTACTA)
+// RUTA 6: NU - VERIFICAR PAGO 
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { nombre, monto, fecha } = req.body; 
@@ -336,7 +336,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 7: CRUNCHYROLL - ENLACE (EL TRUCO DEL DESCARTE)
+// RUTA 7: CRUNCHYROLL - EXACTAMENTE LO QUE PEDISTE
 // ==========================================
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -357,32 +357,39 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
 
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
-            
-            // Limpiamos formato oculto
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
             
-            // Atrapamos TODOS los enlaces gigantes de Crunchyroll
-            const regexEnlaces = /https?:\/\/links\.mail\.crunchyroll\.com\/ls\/click\?upn=[^\s"'><]+/gi;
-            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+            // Busca la etiqueta de enlace que tenga exactamente el texto "haz clic"
+            const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+            
+            let enlaceReal = null;
+            let match;
 
-            // Eliminamos duplicados manteniendo el orden en el que aparecen de arriba hacia abajo
-            const enlacesLimpios = [...new Set(enlacesEncontrados)];
+            while ((match = regexTagA.exec(bodyLimpio)) !== null) {
+                let url = match[1];
+                let textoInterno = match[2].toLowerCase().replace(/<[^>]+>/g, ''); // limpia etiquetas basura
 
-            if (enlacesLimpios.length > 0) {
-                let enlaceReal;
-                
-                // LA LÓGICA QUE PEDISTE:
-                // Si el correo tiene más de 1 enlace, el primero (enlacesLimpios[0]) es el Logo que te mandó a la página principal.
-                // Lo desechamos y tomamos el que sigue (enlacesLimpios[1]), que es el botón de la contraseña.
-                if (enlacesLimpios.length > 1) {
-                    enlaceReal = enlacesLimpios[1]; 
-                } else {
-                    enlaceReal = enlacesLimpios[0];
+                // Si el enlace está envolviendo las palabras "haz clic", ESE ES EL BUENO.
+                if (textoInterno.includes('haz clic') || textoInterno.includes('click')) {
+                    enlaceReal = url;
+                    break;
                 }
+            }
 
+            // Respaldo por si falla el texto: Busca el token gigante y agarra el más largo
+            if (!enlaceReal) {
+                const regexUPN = /https?:\/\/links\.mail\.crunchyroll\.com\/ls\/click\?upn=[^\s"'><]+/gi;
+                const enlacesUPN = bodyLimpio.match(regexUPN) || [];
+                if (enlacesUPN.length > 0) {
+                    enlacesUPN.sort((a, b) => b.length - a.length);
+                    enlaceReal = enlacesUPN[0];
+                }
+            }
+
+            if (enlaceReal) {
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces de Crunchyroll válidos." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el enlace 'haz clic'." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
