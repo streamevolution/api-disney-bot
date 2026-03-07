@@ -262,7 +262,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO (INTACTA CON TU REPARACIÓN)
+// RUTA 6: NU - VERIFICAR PAGO (INTACTA)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { nombre, monto, fecha } = req.body; 
@@ -336,7 +336,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 7: CRUNCHYROLL - ENLACE DE CONTRASEÑA (NUEVA FUNCIÓN)
+// RUTA 7: CRUNCHYROLL - ENLACE (NUEVO ESCÁNER ESTRUCTURAL)
 // ==========================================
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -357,37 +357,35 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
 
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
-            
-            // Limpiamos el texto HTML
             let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
-            
-            // Atrapamos todos los enlaces
-            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
-            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+            let bodyLower = bodyLimpio.toLowerCase();
 
-            // Filtramos imágenes, logos y basura (asegurando que sea enlace de crunchyroll)
-            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                link.toLowerCase().includes('crunchyroll') && 
-                !link.toLowerCase().includes('.png') && 
-                !link.toLowerCase().includes('.jpg') && 
-                !link.toLowerCase().includes('.gif') && 
-                !link.toLowerCase().includes('logo') && 
-                !link.toLowerCase().includes('pixel') && 
-                !link.toLowerCase().includes('facebook') && 
-                !link.toLowerCase().includes('twitter') && 
-                !link.toLowerCase().includes('instagram') && 
-                !link.toLowerCase().includes('privacy') && 
-                !link.toLowerCase().includes('terms')
-            );
+            // 1. Extraemos TODAS las URLs y guardamos su posición exacta
+            const regex = /href=["'](https?:\/\/[^"']+)["']/gi;
+            let match;
+            let enlacesConPosicion = [];
+            while ((match = regex.exec(bodyLimpio)) !== null) {
+                enlacesConPosicion.push({ url: match[1], pos: match.index });
+            }
 
-            if (enlacesLimpios.length > 0) {
-                // TRUCO MAESTRO: Tomamos el enlace más largo (el token)
-                enlacesLimpios.sort((a, b) => b.length - a.length);
-                const enlaceReal = enlacesLimpios[0];
+            // 2. Buscamos dónde dice exactamente la palabra clave
+            let posObjetivo = bodyLower.indexOf('haz clic');
+            if (posObjetivo === -1) posObjetivo = bodyLower.indexOf('click');
 
+            let enlaceReal = null;
+
+            // 3. El truco maestro: El enlace correcto SIEMPRE es el que está pegado antes de "haz clic"
+            if (posObjetivo !== -1 && enlacesConPosicion.length > 0) {
+                let enlacesAntes = enlacesConPosicion.filter(e => e.pos < posObjetivo);
+                if (enlacesAntes.length > 0) {
+                    enlaceReal = enlacesAntes[enlacesAntes.length - 1].url;
+                }
+            }
+
+            if (enlaceReal) {
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se pudo ubicar el botón exacto." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
