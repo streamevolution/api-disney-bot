@@ -51,7 +51,7 @@
             margin-bottom: 6px;
             font-weight: 500;
         }
-        select, input[type="email"] {
+        select, input {
             width: 100%;
             box-sizing: border-box;
             padding: 14px 12px;
@@ -64,16 +64,16 @@
             outline: none;
             transition: border-color 0.2s;
             appearance: none; 
+        }
+        
+        select {
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
             background-repeat: no-repeat;
             background-position: right 12px center;
             background-size: 16px;
         }
-        input[type="email"] { background-image: none; }
         
-        select:focus, input[type="email"]:focus {
-            border-color: #3b82f6; 
-        }
+        select:focus, input:focus { border-color: #3b82f6; }
         
         button {
             width: 100%;
@@ -89,9 +89,7 @@
             transition: background-color 0.2s;
             font-family: 'Inter', sans-serif;
         }
-        button:hover {
-            background-color: #2563eb;
-        }
+        button:hover { background-color: #2563eb; }
 
         .result-box {
             margin-top: 25px;
@@ -145,7 +143,7 @@
 
     <div class="panel">
         <h2>Panel de Control</h2>
-        <p class="subtitle">Selecciona plataforma</p>
+        <p class="subtitle">Selecciona plataforma o banco</p>
         
         <div class="form-group">
             <label for="plataformaSelect">Plataforma</label>
@@ -153,8 +151,7 @@
                 <option value="disney">Disney+</option>
                 <option value="netflix">Netflix</option>
                 <option value="vix">ViX</option>
-                <option value="max">Max / HBO</option>
-                <option value="prime">Prime Video</option>
+                <option value="nu">Nu (Verificar Pago)</option>
             </select>
         </div>
 
@@ -164,9 +161,26 @@
                 </select>
         </div>
 
-        <div class="form-group">
+        <div id="inputsPlataformas" class="form-group">
             <label for="emailInput">Correo asignado</label>
-            <input type="email" id="emailInput" placeholder="Ej. juan+4@gmail.com" required>
+            <input type="email" id="emailInput" placeholder="Ej. cliente+4@gmail.com">
+        </div>
+
+        <div id="inputsNu" style="display: none;">
+            <div class="form-group">
+                <label>Nombre completo</label>
+                <input type="text" id="nuNombre" placeholder="Ej. EMMANUEL ORTIZ RODRIGUEZ">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Monto</label>
+                    <input type="text" id="nuMonto" placeholder="Ej. 200.00">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Hora</label>
+                    <input type="text" id="nuHora" placeholder="Ej. 20:19">
+                </div>
+            </div>
         </div>
 
         <button onclick="ejecutarAccion()">Continuar</button>
@@ -177,7 +191,6 @@
     </div>
 
     <script>
-        // 1. DICCIONARIO DE OPCIONES (NUEVA FUNCIÓN DE NETFLIX AGREGADA)
         const opciones = {
             'disney': [
                 { texto: 'Código de Acceso', valor: 'acceso_disney' },
@@ -190,17 +203,16 @@
             'vix': [
                 { texto: 'Cambiar contraseña', valor: 'pass_vix' }
             ],
-            'max': [
-                { texto: 'Próximamente...', valor: 'none' }
-            ],
-            'prime': [
-                { texto: 'Próximamente...', valor: 'none' }
+            'nu': [
+                { texto: 'Verificar transferencia', valor: 'verificar_nu' }
             ]
         };
 
+        // Cambia la vista del formulario si se elige Nu
         function actualizarOpciones() {
             const plataforma = document.getElementById('plataformaSelect').value;
             const selectAccion = document.getElementById('accionSelect');
+            
             selectAccion.innerHTML = '';
             opciones[plataforma].forEach(opcion => {
                 const opt = document.createElement('option');
@@ -208,42 +220,64 @@
                 opt.textContent = opcion.texto;
                 selectAccion.appendChild(opt);
             });
+
+            if (plataforma === 'nu') {
+                document.getElementById('inputsPlataformas').style.display = 'none';
+                document.getElementById('inputsNu').style.display = 'block';
+            } else {
+                document.getElementById('inputsPlataformas').style.display = 'block';
+                document.getElementById('inputsNu').style.display = 'none';
+            }
         }
 
         actualizarOpciones();
 
-        // 2. ENRUTADOR DE ACCIONES
         function ejecutarAccion() {
             const accion = document.getElementById('accionSelect').value;
+            const plataforma = document.getElementById('plataformaSelect').value;
             const cajaResultado = document.getElementById('cajaResultado');
+            
+            let payload = {};
+
+            // Construimos la petición según el formulario activo
+            if (plataforma === 'nu') {
+                payload = {
+                    nombre: document.getElementById('nuNombre').value,
+                    monto: document.getElementById('nuMonto').value,
+                    hora: document.getElementById('nuHora').value
+                };
+                if(!payload.nombre || !payload.monto || !payload.hora) {
+                    alert("Por favor llena Nombre, Monto y Hora de la transferencia."); return;
+                }
+            } else {
+                payload = { email_usuario: document.getElementById('emailInput').value };
+                if(!payload.email_usuario) {
+                    alert("Por favor ingresa un correo asignado."); return;
+                }
+            }
 
             if (accion === 'acceso_disney') {
-                realizarPeticion('/buscar-correo', 'Obteniendo Código Disney...');
+                realizarPeticion('/buscar-correo', 'Obteniendo Código Disney...', payload);
             } else if (accion === 'hogar_disney') {
-                realizarPeticion('/buscar-enlace-hogar', 'Buscando Código Hogar...');
+                realizarPeticion('/buscar-enlace-hogar', 'Buscando Código Hogar...', payload);
             } else if (accion === 'acceso_netflix') {
-                realizarPeticion('/buscar-codigo-netflix', 'Obteniendo Código Netflix...');
+                realizarPeticion('/buscar-codigo-netflix', 'Obteniendo Código Netflix...', payload);
             } else if (accion === 'pass_netflix') {
-                realizarPeticion('/buscar-pass-netflix', 'Obteniendo Enlace de Netflix...');
+                realizarPeticion('/buscar-pass-netflix', 'Obteniendo Enlace de Netflix...', payload);
             } else if (accion === 'pass_vix') {
-                realizarPeticion('/buscar-enlace-vix', 'Obteniendo Enlace de Vix...');
+                realizarPeticion('/buscar-enlace-vix', 'Obteniendo Enlace de Vix...', payload);
+            } else if (accion === 'verificar_nu') {
+                realizarPeticion('/buscar-pago-nu', 'Verificando en cuenta Nu...', payload);
             } else {
                 cajaResultado.innerHTML = `<span style="color: #64748b; font-size: 14px;">Plataforma en desarrollo.</span>`;
             }
         }
 
-        // 3. MOTOR DE BÚSQUEDA
-        async function realizarPeticion(ruta, mensajeCarga) {
-            const email = document.getElementById('emailInput').value;
+        async function realizarPeticion(ruta, mensajeCarga, payload) {
             const cajaResultado = document.getElementById('cajaResultado');
             const modal = document.getElementById('loadingModal');
             const textoCarga = document.getElementById('textoCarga');
             
-            if(!email) {
-                alert("Por favor ingresa un correo electrónico válido.");
-                return;
-            }
-
             textoCarga.innerText = mensajeCarga;
             modal.classList.add('active');
             cajaResultado.innerHTML = '<span style="color: #64748b; font-size: 14px;">Procesando...</span>';
@@ -254,7 +288,7 @@
                 const response = await fetch(baseUrlRailway + ruta, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email_usuario: email })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -264,8 +298,6 @@
                     if(data.tipo === 'codigo') {
                         cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
                     } else if (data.tipo === 'enlace') {
-                        
-                        // Detectamos qué plataforma es para ponerle el nombre correcto al botón verde
                         let textoBoton = 'Abrir enlace';
                         if (ruta.includes('vix')) textoBoton = 'Abrir enlace de ViX';
                         if (ruta.includes('netflix')) textoBoton = 'Abrir enlace de Netflix';
@@ -274,6 +306,17 @@
                         cajaResultado.innerHTML = `
                             <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace encontrado!</span>
                             <a href="${data.resultado}" target="_blank" class="btn-enlace-final">${textoBoton}</a>
+                        `;
+                    } else if (data.tipo === 'pago') {
+                        // TARJETA DE VALIDACIÓN PARA NU
+                        cajaResultado.innerHTML = `
+                            <span class="result-text" style="font-size: 24px; margin-bottom: 12px; display: inline-block;">✅ ${data.resultado}</span>
+                            <div style="text-align: left; background: #334155; padding: 15px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                                <p style="margin: 0 0 5px 0; color: #cbd5e1; font-size: 13px;">Nombre de la persona: <span style="color: white; font-weight: 600; font-size: 14px;">${data.datos.nombre}</span></p>
+                                <p style="margin: 0 0 5px 0; color: #cbd5e1; font-size: 13px;">Monto: <span style="color: white; font-weight: 600; font-size: 14px;">${data.datos.monto}</span></p>
+                                <p style="margin: 0 0 5px 0; color: #cbd5e1; font-size: 13px;">Fecha: <span style="color: white; font-weight: 600; font-size: 14px;">${data.datos.fecha}</span></p>
+                                <p style="margin: 0; color: #cbd5e1; font-size: 13px;">Hora: <span style="color: white; font-weight: 600; font-size: 14px;">${data.datos.hora}</span></p>
+                            </div>
                         `;
                     } else {
                         cajaResultado.innerHTML = `<span class="result-error">${data.resultado}</span>`;
