@@ -15,7 +15,7 @@ app.post('/buscar-correo', async (req, res) => {
     const config = obtenerConfiguracion();
 
     try {
-        const connection = await imaps.connect(config);
+        const connection = await imaps.c
         await connection.openBox('INBOX');
 
         const searchCriteria = [
