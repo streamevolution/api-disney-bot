@@ -262,10 +262,9 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO (BLINDADA CON EXTRACCIÓN EXACTA)
+// RUTA 6: NU - VERIFICAR PAGO (CORREGIDA PARA REENVÍOS)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    // Cambiamos 'hora' por 'fecha' en lo que recibimos del panel
     const { nombre, monto, fecha } = req.body; 
     const config = obtenerConfiguracion();
 
@@ -273,8 +272,8 @@ app.post('/buscar-pago-nu', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
+        // SOLUCIÓN: Se eliminó el ['FROM', 'noresponda@nu.com.mx'] para que atrape los reenviados.
         const searchCriteria = [
-            ['FROM', 'noresponda@nu.com.mx'],
             ['HEADER', 'SUBJECT', 'transferencia']
         ];
         
@@ -290,11 +289,11 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 const rawBody = messages[i].parts[0].body;
                 
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
-                let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); // Todo en mayúsculas y sin espacios dobles
+                let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
                 // NORMALIZAMOS LO QUE INGRESASTE
                 let nombreBuscado = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
-                let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); // Lo convertimos a número matemático
+                let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
                 let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
 
                 // EXTRACCIÓN CON ESCÁNER QUIRÚRGICO DEL CORREO
@@ -305,7 +304,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 
                 let nombreCorreo = matchName ? matchName[1].trim() : "";
                 let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
-                let montoCorreo = parseFloat(montoCorreoStr); // Convertimos el dinero del correo a número matemático
+                let montoCorreo = parseFloat(montoCorreoStr); 
                 let fechaCorreo = matchFecha ? matchFecha[1].trim() : "";
                 let horaCorreo = matchHora ? matchHora[1].trim() : "No detectada";
 
@@ -332,7 +331,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto} el día ${fecha}.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron notificaciones del banco Nu en tu bandeja.` });
+            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
         }
         connection.end();
     } catch (error) {
