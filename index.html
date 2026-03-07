@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel StreamEvolution</title>
+    <title>StreamEvolution Hub</title>
     <style>
         body {
-            background-color: #0f1014; 
+            background-color: #0b0c10; 
             color: #f9f9f9;
             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             display: flex;
@@ -16,109 +16,111 @@
             margin: 0;
         }
         .container {
-            background-color: #1a1d29;
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            background-color: #1a1c23;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
             text-align: center;
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             position: relative;
-            overflow: hidden;
         }
         h2 {
-            margin-bottom: 5px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            background: linear-gradient(90deg, #0072d2, #00c6ff);
+            margin: 0 0 5px 0;
+            font-weight: 700;
+            font-size: 24px;
+            background: linear-gradient(90deg, #ffffff, #a0a5b5);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        p { color: #8f98b2; font-size: 14px; margin-bottom: 30px; }
+        p { color: #8f98b2; font-size: 14px; margin-bottom: 25px; }
         
+        /* PESTAÑAS (TABS) */
+        .tabs {
+            display: flex;
+            background-color: #121418;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            overflow: hidden;
+            border: 1px solid #2b2e40;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 12px 0;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            color: #8f98b2;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .tab-btn.active-disney {
+            background-color: #0072d2;
+            color: white;
+        }
+        .tab-btn.active-vix {
+            background-color: #ff3b30; /* Color rojo/naranja estilo Vix */
+            color: white;
+        }
+
+        /* SECCIONES */
+        .seccion { display: none; }
+        .seccion.activa { display: block; animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* INPUTS Y BOTONES */
         input[type="email"] {
             width: 90%;
             padding: 14px 15px;
             border-radius: 8px;
             border: 1px solid #3b3e50;
-            background-color: #13151d;
+            background-color: #0b0c10;
             color: white;
             font-size: 15px;
             margin-bottom: 20px;
             outline: none;
             transition: border 0.3s;
         }
-        input[type="email"]:focus { border-color: #0072d2; }
+        input[type="email"]:focus { border-color: #8f98b2; }
         
-        .botones-container {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        
+        .botones-container { display: flex; gap: 10px; }
         button {
-            flex: 1;
-            color: white;
-            border: none;
-            padding: 14px 10px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
+            flex: 1; color: white; border: none; padding: 14px 10px;
+            border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        .btn-codigo {
-            background: linear-gradient(90deg, #0072d2, #005bb5);
-        }
-        .btn-codigo:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 114, 210, 0.4); }
         
-        .btn-hogar {
-            background: linear-gradient(90deg, #8a2387, #e94057); /* Tonos morado/rojo elegantes */
-        }
-        .btn-hogar:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(233, 64, 87, 0.4); }
+        /* Colores Botones Disney */
+        .btn-disney-acceso { background: linear-gradient(90deg, #0072d2, #005bb5); }
+        .btn-disney-acceso:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 114, 210, 0.4); }
+        .btn-disney-hogar { background: linear-gradient(90deg, #8a2387, #e94057); }
+        .btn-disney-hogar:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(233, 64, 87, 0.4); }
         
+        /* Color Botón Vix */
+        .btn-vix { background: linear-gradient(90deg, #ff3b30, #ff8c00); width: 100%; margin-top: 5px; }
+        .btn-vix:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255, 59, 48, 0.4); }
+        
+        /* CAJA DE RESULTADO */
         .result-box {
-            margin-top: 25px;
-            padding: 20px;
-            background-color: #13151d;
-            border-radius: 8px;
-            border: 1px solid #2b2e40;
-            min-height: 60px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            word-break: break-all;
+            margin-top: 25px; padding: 20px; background-color: #0b0c10;
+            border-radius: 8px; border: 1px solid #2b2e40; min-height: 60px;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
         }
         .result-text { font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #00e676; }
         .result-error { font-size: 14px; color: #ff5252; }
-        
-        .btn-enlace-final {
-            background-color: #00e676;
-            color: #000;
-            padding: 10px 15px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: bold;
-            margin-top: 10px;
-            display: inline-block;
-            transition: background-color 0.2s;
-        }
-        .btn-enlace-final:hover { background-color: #00c853; }
 
+        /* SPINNER PANTALLA DE CARGA */
         .overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 16, 20, 0.85);
-            backdrop-filter: blur(8px);
+            background: rgba(11, 12, 16, 0.85); backdrop-filter: blur(8px);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
         }
         .overlay.active { opacity: 1; pointer-events: auto; }
         .spinner {
             width: 50px; height: 50px; border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top-color: #0072d2; border-radius: 50%; animation: girar 1s linear infinite; margin-bottom: 20px;
+            border-top-color: #ffffff; border-radius: 50%; animation: girar 1s linear infinite; margin-bottom: 20px;
         }
-        .overlay p { color: white; font-size: 16px; font-weight: 500; margin: 0; }
         @keyframes girar { to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -126,47 +128,74 @@
 
     <div id="loadingModal" class="overlay">
         <div class="spinner" id="spinnerCarga"></div>
-        <p id="textoCarga">Procesando solicitud...</p>
+        <p id="textoCarga" style="color: white; font-weight: 500;">Procesando...</p>
     </div>
 
     <div class="container">
-        <h2>Panel StreamEvolution</h2>
-        <p>Gestor Central de Disney+</p>
+        <h2>StreamEvolution Hub</h2>
+        <p>Panel General de Plataformas</p>
         
-        <input type="email" id="emailInput" placeholder="Correo del cliente (ej. juan+3@...)" required>
-        
-        <div class="botones-container">
-            <button class="btn-codigo" onclick="realizarPeticion('/buscar-correo', 'Obteniendo Código...')">Código Acceso</button>
-            <button class="btn-hogar" onclick="realizarPeticion('/buscar-enlace-hogar', 'Buscando Enlace de Hogar...')">Actualizar Hogar</button>
+        <div class="tabs">
+            <div class="tab-btn active-disney" id="tab-disney" onclick="cambiarPestana('disney')">Disney+</div>
+            <div class="tab-btn" id="tab-vix" onclick="cambiarPestana('vix')">ViX Premium</div>
+        </div>
+
+        <div id="seccion-disney" class="seccion activa">
+            <input type="email" id="emailDisney" placeholder="Correo Disney (ej. juan+3@...)" required>
+            <div class="botones-container">
+                <button class="btn-disney-acceso" onclick="realizarPeticion('/buscar-correo', 'emailDisney', 'Buscando Acceso Disney...', '#0072d2')">Código Acceso</button>
+                <button class="btn-disney-hogar" onclick="realizarPeticion('/buscar-enlace-hogar', 'emailDisney', 'Buscando Hogar...', '#e94057')">Actualizar Hogar</button>
+            </div>
+        </div>
+
+        <div id="seccion-vix" class="seccion">
+            <input type="email" id="emailVix" placeholder="Correo ViX (ej. juan+4@...)" required>
+            <button class="btn-vix" onclick="realizarPeticion('/buscar-vix', 'emailVix', 'Buscando Código ViX...', '#ff3b30')">Obtener Código ViX</button>
         </div>
 
         <div class="result-box" id="cajaResultado">
-            <span id="resultadoTexto" style="color: #666; font-size: 14px;">El resultado aparecerá aquí</span>
+            <span id="resultadoTexto" style="color: #666; font-size: 14px;">El código aparecerá aquí</span>
         </div>
     </div>
 
     <script>
-        async function realizarPeticion(ruta, mensajeCarga) {
-            const email = document.getElementById('emailInput').value;
+        // Lógica para cambiar entre pestañas
+        function cambiarPestana(plataforma) {
+            document.getElementById('seccion-disney').classList.remove('activa');
+            document.getElementById('seccion-vix').classList.remove('activa');
+            document.getElementById('tab-disney').className = 'tab-btn';
+            document.getElementById('tab-vix').className = 'tab-btn';
+            
+            // Limpiamos la caja de resultados al cambiar de pestaña
+            document.getElementById('cajaResultado').innerHTML = '<span style="color: #666; font-size: 14px;">El código aparecerá aquí</span>';
+
+            if (plataforma === 'disney') {
+                document.getElementById('seccion-disney').classList.add('activa');
+                document.getElementById('tab-disney').classList.add('active-disney');
+            } else if (plataforma === 'vix') {
+                document.getElementById('seccion-vix').classList.add('activa');
+                document.getElementById('tab-vix').classList.add('active-vix');
+            }
+        }
+
+        // Lógica para enviar peticiones al servidor
+        async function realizarPeticion(ruta, idInputEmail, mensajeCarga, colorCarga) {
+            const email = document.getElementById(idInputEmail).value;
             const cajaResultado = document.getElementById('cajaResultado');
             const modal = document.getElementById('loadingModal');
-            const textoCarga = document.getElementById('textoCarga');
-            const spinner = document.getElementById('spinnerCarga');
             
             if(!email) {
-                alert("Por favor ingresa un correo electrónico válido.");
+                alert("Por favor ingresa el correo de esta plataforma.");
                 return;
             }
 
-            // Configurar color del spinner dependiendo de la acción
-            spinner.style.borderTopColor = ruta.includes('hogar') ? '#e94057' : '#0072d2';
-            textoCarga.innerText = mensajeCarga;
+            document.getElementById('textoCarga').innerText = mensajeCarga;
+            document.getElementById('spinnerCarga').style.borderTopColor = colorCarga;
             modal.classList.add('active');
-            
             cajaResultado.innerHTML = '<span style="color: #666; font-size: 14px;">Procesando...</span>';
 
             try {
-                // RECUERDA PONER TU ENLACE BASE DE RAILWAY AQUÍ
+                // TU URL DE RAILWAY
                 const baseUrlRailway = 'https://api-disney-bot-production.up.railway.app'; 
                 
                 const response = await fetch(baseUrlRailway + ruta, {
@@ -181,12 +210,6 @@
                 if (data.success) {
                     if(data.tipo === 'codigo') {
                         cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
-                    } else if (data.tipo === 'enlace') {
-                        // Si es un enlace, creamos un botón verde interactivo para darle clic
-                        cajaResultado.innerHTML = `
-                            <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace de Hogar encontrado!</span>
-                            <a href="${data.resultado}" target="_blank" class="btn-enlace-final">Abrir enlace de Disney</a>
-                        `;
                     } else {
                         cajaResultado.innerHTML = `<span class="result-error">${data.resultado}</span>`;
                     }
@@ -195,7 +218,7 @@
                 }
             } catch (error) {
                 modal.classList.remove('active');
-                cajaResultado.innerHTML = `<span class="result-error">Error de red. Verifica tu conexión a Railway.</span>`;
+                cajaResultado.innerHTML = `<span class="result-error">Error de red. Verifica tu servidor en Railway.</span>`;
             }
         }
     </script>
