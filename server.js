@@ -336,7 +336,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 7: CRUNCHYROLL - ENLACE (SOLUCIÓN EXACTA INFALIBLE)
+// RUTA 7: CRUNCHYROLL - ENLACE (EL TRUCO DEL DESCARTE)
 // ==========================================
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -358,29 +358,31 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
             
-            // Limpiamos comillas dobles y saltos de línea ocultos del correo
+            // Limpiamos formato oculto
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
             
-            // Extraemos todo lo que parezca un enlace
-            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+            // Atrapamos TODOS los enlaces gigantes de Crunchyroll
+            const regexEnlaces = /https?:\/\/links\.mail\.crunchyroll\.com\/ls\/click\?upn=[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
-            // FILTRO INFALIBLE BASADO EN TU ENLACE: 
-            // Solo tomamos los enlaces que tengan EXACTAMENTE el dominio y la estructura de tu token
-            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                link.includes('links.mail.crunchyroll.com/ls/click') && 
-                link.includes('upn=') // <-- Esto es lo que identifica el token gigante de Crunchyroll
-            );
+            // Eliminamos duplicados manteniendo el orden en el que aparecen de arriba hacia abajo
+            const enlacesLimpios = [...new Set(enlacesEncontrados)];
 
             if (enlacesLimpios.length > 0) {
-                // El enlace correcto siempre es absurdamente largo (el tuyo tiene 869 caracteres)
-                // Ordenamos del más largo al más corto para atraparlo
-                enlacesLimpios.sort((a, b) => b.length - a.length);
-                const enlaceReal = enlacesLimpios[0];
+                let enlaceReal;
+                
+                // LA LÓGICA QUE PEDISTE:
+                // Si el correo tiene más de 1 enlace, el primero (enlacesLimpios[0]) es el Logo que te mandó a la página principal.
+                // Lo desechamos y tomamos el que sigue (enlacesLimpios[1]), que es el botón de la contraseña.
+                if (enlacesLimpios.length > 1) {
+                    enlaceReal = enlacesLimpios[1]; 
+                } else {
+                    enlaceReal = enlacesLimpios[0];
+                }
 
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el enlace gigante de recuperación." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces de Crunchyroll válidos." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
