@@ -88,7 +88,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
                     res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos en el correo de hogar." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró el correo de Actualización de Hogar para: ${email_usuario}` });
@@ -100,7 +100,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 3: VIX - ENLACE DE CONTRASEÑA (NUEVA)
+// RUTA 3: VIX - ENLACE DE CONTRASEÑA (ACTUALIZADA)
 // ==========================================
 app.post('/buscar-enlace-vix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -110,10 +110,6 @@ app.post('/buscar-enlace-vix', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // BÚSQUEDA ESPECÍFICA:
-        // 1. Remitente: vix@vix.com
-        // 2. Título contenga: contraseña (para atrapar "restablecer" o "cambiar")
-        // 3. Dirigido al alias del cliente
         const searchCriteria = [
             ['FROM', 'vix@vix.com'],
             ['HEADER', 'SUBJECT', 'contraseña'], 
@@ -124,34 +120,40 @@ app.post('/buscar-enlace-vix', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            // Obtenemos el último correo (el más nuevo)
             const rawBody = messages[messages.length - 1].parts[0].body;
             
-            // RASTREADOR DE ENLACES: Buscamos todas las URLs completas (https://...)
-            const regexEnlaces = /href="(https:\/\/[^"]+)"/gi;
-            const enlacesEncontrados = [...rawBody.matchAll(regexEnlaces)].map(m => m[1]);
+            // EL TRUCO: Reparamos el código roto y los signos de igual del correo antes de buscar
+            let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+            
+            // RASTREADOR DE ENLACES MÁS POTENTE: Extrae cualquier cosa que empiece con https://
+            const regexEnlaces = /https:\/\/[^\s"'><]+/gi;
+            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
-            // FILTRO DE ENLACES: Buscamos un enlace que sea de Vix pero que NO sea basura (legal, privacidad, etc.)
+            // FILTRO INTELIGENTE: Eliminamos los enlaces basura (Términos, Privacidad, Redes Sociales)
             const enlaceReal = enlacesEncontrados.find(link => 
-                !link.includes('privacy') && 
-                !link.includes('legal') && 
-                !link.includes('support') && 
-                link.includes('vix')
+                !link.toLowerCase().includes('privacy') && 
+                !link.toLowerCase().includes('legal') && 
+                !link.toLowerCase().includes('support') && 
+                !link.toLowerCase().includes('help') && 
+                !link.toLowerCase().includes('terms') && 
+                !link.toLowerCase().includes('facebook') && 
+                !link.toLowerCase().includes('twitter') && 
+                !link.toLowerCase().includes('instagram') && 
+                !link.toLowerCase().includes('w3.org')
             );
 
             if (enlaceReal) {
-                // Lo enviamos como tipo 'enlace' para que el HTML cree el botón verde
+                // Si encontramos un enlace válido, lo mandamos
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo de Vix, pero no pudimos extraer el enlace de confirmación." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no pudimos extraer el botón (formato desconocido)." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de cambio de contraseña de Vix para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
-        console.error("Error Vix:", error);
-        res.status(500).json({ success: false, error: "Error interno en el servidor para Vix." });
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
     }
 });
 
