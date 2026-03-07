@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// RUTA 1: BUSCAR CÓDIGO DE 6 DÍGITOS (El que ya tenías)
+// RUTA 1: BUSCAR CÓDIGO DE 6 DÍGITOS
 // ==========================================
 app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -45,7 +45,7 @@ app.post('/buscar-correo', async (req, res) => {
                 res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró un correo reciente para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró un código reciente para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
@@ -54,7 +54,7 @@ app.post('/buscar-correo', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 2: BUSCAR ENLACE DE HOGAR (NUEVO)
+// RUTA 2: BUSCAR ENLACE DE HOGAR (AMPLIADA)
 // ==========================================
 app.post('/buscar-enlace-hogar', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -64,10 +64,9 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Busca correos de Disney dirigidos al cliente que tengan la palabra "Hogar" en el asunto
+        // BÚSQUEDA AMPLIA: Cualquier correo que contenga "disney" en el remitente
         const searchCriteria = [
-            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
-            ['HEADER', 'SUBJECT', 'Hogar'], 
+            ['FROM', 'disney'],
             ['TO', email_usuario] 
         ];
         
@@ -75,25 +74,37 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            let enlaceEncontrado = null;
             
-            // Expresión regular para extraer todos los enlaces (URLs) que vengan en el correo
-            const regexEnlaces = /href="(https:\/\/[^"]+)"/g;
-            const enlacesEncontrados = [...rawBody.matchAll(regexEnlaces)].map(m => m[1]);
+            // Revisamos los últimos 3 correos de Disney de más nuevo a más viejo
+            const limite = Math.max(0, messages.length - 3);
+            for (let i = messages.length - 1; i >= limite; i--) {
+                const rawBody = messages[i].parts[0].body;
+                
+                // Extraemos todos los enlaces ocultos en el correo
+                const regexEnlaces = /href="(https:\/\/[^"]+)"/gi;
+                const enlaces = [...rawBody.matchAll(regexEnlaces)].map(m => m[1]);
 
-            // Filtramos enlaces de políticas de privacidad, ayuda, etc., para quedarnos con el enlace principal
-            const enlacesUtiles = enlacesEncontrados.filter(link => 
-                !link.includes('privacy') && 
-                !link.includes('help') && 
-                !link.includes('legal') &&
-                link.includes('disney')
-            );
+                // Buscamos un enlace que sea de Disney pero que NO sea de ayuda o legal
+                const enlaceUtil = enlaces.find(link => 
+                    !link.includes('privacy') && 
+                    !link.includes('help') && 
+                    !link.includes('legal') &&
+                    !link.includes('support') &&
+                    !link.includes('preferences') &&
+                    link.includes('disney')
+                );
 
-            if (enlacesUtiles.length > 0) {
-                // Devolvemos el primer enlace válido encontrado
-                res.json({ success: true, tipo: 'enlace', resultado: enlacesUtiles[0] });
+                if (enlaceUtil) {
+                    enlaceEncontrado = enlaceUtil;
+                    break; // Ya lo encontramos, salimos
+                }
+            }
+
+            if (enlaceEncontrado) {
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceEncontrado });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se encontró el botón de actualización en el correo." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se pudo extraer el botón. Asegúrate de que tenga un enlace." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró el correo de Actualización de Hogar para: ${email_usuario}` });
@@ -104,7 +115,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
     }
 });
 
-// Función auxiliar para no repetir código
+// Función para no repetir la configuración
 function obtenerConfiguracion() {
     return {
         imap: {
