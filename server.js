@@ -100,7 +100,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 3: VIX - ENLACE DE CONTRASEÑA (ACTUALIZADA ANTI-IMÁGENES)
+// RUTA 3: VIX - ENLACE DE CONTRASEÑA (ACTUALIZADA CON TU ENLACE)
 // ==========================================
 app.post('/buscar-enlace-vix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -125,38 +125,37 @@ app.post('/buscar-enlace-vix', async (req, res) => {
             // Reparamos el código roto del correo
             let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
             
-            // Rastreamos todas las URLs
-            const regexEnlaces = /https:\/\/[^\s"'><]+/gi;
+            // EXTRAE ENLACES HTTP y HTTPS (Gracias al enlace que nos pasaste)
+            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
-            // FILTRO SÚPER MEJORADO: Explicitamente ignoramos todo lo que parezca imagen o rastreo
-            const enlaceReal = enlacesEncontrados.find(link => 
-                link.toLowerCase().includes('vix') && // Debe contener Vix
-                // ESCUDO ANTI-IMÁGENES
-                !link.toLowerCase().includes('image') && 
-                !link.toLowerCase().includes('assets') && 
-                !link.toLowerCase().includes('logo') && 
-                !link.toLowerCase().includes('pixel') && 
+            // Limpiamos comillas accidentales y filtramos basura
+            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                link.toLowerCase().includes('vix') && // Aseguramos que sea de Vix
                 !link.toLowerCase().includes('.png') && 
                 !link.toLowerCase().includes('.jpg') && 
                 !link.toLowerCase().includes('.gif') && 
-                !link.toLowerCase().includes('.css') && 
-                // FILTROS BASURA ANTERIORES
-                !link.toLowerCase().includes('privacy') && 
-                !link.toLowerCase().includes('legal') && 
-                !link.toLowerCase().includes('support') && 
-                !link.toLowerCase().includes('help') && 
-                !link.toLowerCase().includes('terms') && 
+                !link.toLowerCase().includes('logo') && 
+                !link.toLowerCase().includes('image') && 
+                !link.toLowerCase().includes('pixel') && 
                 !link.toLowerCase().includes('facebook') && 
                 !link.toLowerCase().includes('twitter') && 
                 !link.toLowerCase().includes('instagram') && 
-                !link.toLowerCase().includes('w3.org')
+                !link.toLowerCase().includes('help') && 
+                !link.toLowerCase().includes('support') && 
+                !link.toLowerCase().includes('privacy') && 
+                !link.toLowerCase().includes('legal')
             );
 
-            if (enlaceReal) {
+            if (enlacesLimpios.length > 0) {
+                // EL TRUCO: Ordenamos los enlaces del más largo al más corto.
+                // Tu enlace era gigantesco, así que siempre quedará en primer lugar.
+                enlacesLimpios.sort((a, b) => b.length - a.length);
+                const enlaceReal = enlacesLimpios[0];
+
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no pudimos filtrar el botón de los demás enlaces ocultos." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de cambio de contraseña de Vix para: ${email_usuario}` });
