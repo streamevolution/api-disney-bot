@@ -8,7 +8,6 @@ app.use(cors());
 app.use(express.json());
 
 app.post('/buscar-correo', async (req, res) => {
-    // Recibimos el correo que escribiste en tu página web
     const { email_usuario } = req.body; 
 
     const config = {
@@ -27,9 +26,13 @@ app.post('/buscar-correo', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // NUEVO FILTRO: Buscar correos de Disney+ dirigidos AL correo que escribiste en la página
+        // NUEVO FILTRO SÚPER ESPECÍFICO
+        // 1. Remitente exacto
+        // 2. Asunto exacto (Ideal para agregar códigos de hogar después)
+        // 3. Dirigido al correo o alias (+3) que pongas en la página
         const searchCriteria = [
-            ['FROM', 'disneyplus.com'],
+            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
+            ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'],
             ['TO', email_usuario] 
         ];
         
@@ -40,19 +43,23 @@ app.post('/buscar-correo', async (req, res) => {
             const ultimoMensaje = messages[messages.length - 1];
             const rawBody = ultimoMensaje.parts[0].body;
 
-            // FILTRO INTELIGENTE: Buscar exactamente 6 números seguidos dentro de todo el código HTML
+            // ELIMINADOR DE DISEÑO (Solución al 707070)
+            // 1. Borra todas las etiquetas HTML (incluyendo colores como #707070)
+            let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ');
+            // 2. Borra basura de codificación como los =20
+            textoLimpio = textoLimpio.replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/g, ' ');
+
+            // Ahora sí, buscamos los 6 dígitos reales en el texto limpio
             const regexCodigo = /\b\d{6}\b/;
-            const coincidencia = rawBody.match(regexCodigo);
+            const coincidencia = textoLimpio.match(regexCodigo);
 
             if (coincidencia) {
-                // Si encuentra los 6 números, te manda solo el código
                 res.json({ success: true, codigo: coincidencia[0] });
             } else {
-                // Si no encuentra números (por si Disney cambia el formato)
-                res.json({ success: true, codigo: "No se detectaron los 6 dígitos. Revisa tu bandeja." });
+                res.json({ success: true, codigo: "No se detectó el código en el texto. Revisa tu bandeja." });
             }
         } else {
-            res.json({ success: false, mensaje: `No hay correos recientes de Disney para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró el mensaje "Tu código de acceso único para Disney+" para: ${email_usuario}` });
         }
 
         connection.end();
