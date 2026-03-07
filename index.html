@@ -177,14 +177,15 @@
     </div>
 
     <script>
-        // 1. DICCIONARIO DE OPCIONES (AHORA CON NETFLIX)
+        // 1. DICCIONARIO DE OPCIONES (NUEVA FUNCIÓN DE NETFLIX AGREGADA)
         const opciones = {
             'disney': [
                 { texto: 'Código de Acceso', valor: 'acceso_disney' },
                 { texto: 'Código de Hogar', valor: 'hogar_disney' }
             ],
             'netflix': [
-                { texto: 'Código de Inicio de sesión', valor: 'acceso_netflix' }
+                { texto: 'Código de Inicio de sesión', valor: 'acceso_netflix' },
+                { texto: 'Cambiar contraseña', valor: 'pass_netflix' }
             ],
             'vix': [
                 { texto: 'Cambiar contraseña', valor: 'pass_vix' }
@@ -222,6 +223,8 @@
                 realizarPeticion('/buscar-enlace-hogar', 'Buscando Código Hogar...');
             } else if (accion === 'acceso_netflix') {
                 realizarPeticion('/buscar-codigo-netflix', 'Obteniendo Código Netflix...');
+            } else if (accion === 'pass_netflix') {
+                realizarPeticion('/buscar-pass-netflix', 'Obteniendo Enlace de Netflix...');
             } else if (accion === 'pass_vix') {
                 realizarPeticion('/buscar-enlace-vix', 'Obteniendo Enlace de Vix...');
             } else {
@@ -229,7 +232,7 @@
             }
         }
 
-        // 3. MOTOR DE BÚSQUEDA (INTACTO)
+        // 3. MOTOR DE BÚSQUEDA
         async function realizarPeticion(ruta, mensajeCarga) {
             const email = document.getElementById('emailInput').value;
             const cajaResultado = document.getElementById('cajaResultado');
@@ -261,7 +264,13 @@
                     if(data.tipo === 'codigo') {
                         cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
                     } else if (data.tipo === 'enlace') {
-                        let textoBoton = ruta.includes('vix') ? 'Abrir enlace de Vix' : 'Abrir enlace';
+                        
+                        // Detectamos qué plataforma es para ponerle el nombre correcto al botón verde
+                        let textoBoton = 'Abrir enlace';
+                        if (ruta.includes('vix')) textoBoton = 'Abrir enlace de ViX';
+                        if (ruta.includes('netflix')) textoBoton = 'Abrir enlace de Netflix';
+                        if (ruta.includes('hogar')) textoBoton = 'Abrir enlace de Disney';
+
                         cajaResultado.innerHTML = `
                             <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace encontrado!</span>
                             <a href="${data.resultado}" target="_blank" class="btn-enlace-final">${textoBoton}</a>
