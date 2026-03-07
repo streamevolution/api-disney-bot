@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel StreamEvolution</title>
     <style>
-        /* Paleta de colores Premium */
         body {
-            background-color: #0f1014; /* Fondo aún más oscuro y elegante */
+            background-color: #0f1014; 
             color: #f9f9f9;
             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             display: flex;
@@ -35,11 +34,8 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        p {
-            color: #8f98b2;
-            font-size: 14px;
-            margin-bottom: 30px;
-        }
+        p { color: #8f98b2; font-size: 14px; margin-bottom: 30px; }
+        
         input[type="email"] {
             width: 90%;
             padding: 14px 15px;
@@ -52,29 +48,37 @@
             outline: none;
             transition: border 0.3s;
         }
-        input[type="email"]:focus {
-            border-color: #0072d2;
+        input[type="email"]:focus { border-color: #0072d2; }
+        
+        .botones-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
         }
+        
         button {
-            background: linear-gradient(90deg, #0072d2, #005bb5);
+            flex: 1;
             color: white;
             border: none;
-            padding: 15px 20px;
-            width: 100%;
+            padding: 14px 10px;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 114, 210, 0.4);
+        .btn-codigo {
+            background: linear-gradient(90deg, #0072d2, #005bb5);
         }
+        .btn-codigo:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 114, 210, 0.4); }
         
-        /* Caja donde se muestra el resultado final */
+        .btn-hogar {
+            background: linear-gradient(90deg, #8a2387, #e94057); /* Tonos morado/rojo elegantes */
+        }
+        .btn-hogar:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(233, 64, 87, 0.4); }
+        
         .result-box {
-            margin-top: 30px;
+            margin-top: 25px;
             padding: 20px;
             background-color: #13151d;
             border-radius: 8px;
@@ -83,131 +87,115 @@
             display: flex;
             justify-content: center;
             align-items: center;
-        }
-        .result-text {
-            font-size: 28px;
-            font-weight: bold;
-            letter-spacing: 4px;
-            color: #00e676; /* Verde éxito */
-        }
-        .result-error {
-            font-size: 14px;
-            color: #ff5252; /* Rojo error */
-            letter-spacing: normal;
-        }
-
-        /* DISEÑO DE LA VENTANA DE CARGA (MODAL) */
-        .overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 16, 20, 0.85);
-            backdrop-filter: blur(8px); /* Efecto cristalino/borroso en el fondo */
-            display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s ease;
+            word-break: break-all;
         }
-        .overlay.active {
-            opacity: 1;
-            pointer-events: auto;
+        .result-text { font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #00e676; }
+        .result-error { font-size: 14px; color: #ff5252; }
+        
+        .btn-enlace-final {
+            background-color: #00e676;
+            color: #000;
+            padding: 10px 15px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: bold;
+            margin-top: 10px;
+            display: inline-block;
+            transition: background-color 0.2s;
         }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top-color: #0072d2;
-            border-radius: 50%;
-            animation: girar 1s linear infinite;
-            margin-bottom: 20px;
-        }
-        .overlay p {
-            color: white;
-            font-size: 16px;
-            font-weight: 500;
-            letter-spacing: 1px;
-            margin: 0;
-        }
+        .btn-enlace-final:hover { background-color: #00c853; }
 
-        @keyframes girar {
-            to { transform: rotate(360deg); }
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 16, 20, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
         }
+        .overlay.active { opacity: 1; pointer-events: auto; }
+        .spinner {
+            width: 50px; height: 50px; border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #0072d2; border-radius: 50%; animation: girar 1s linear infinite; margin-bottom: 20px;
+        }
+        .overlay p { color: white; font-size: 16px; font-weight: 500; margin: 0; }
+        @keyframes girar { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <div id="loadingModal" class="overlay">
-        <div class="spinner"></div>
-        <p>Generando acceso...</p>
+        <div class="spinner" id="spinnerCarga"></div>
+        <p id="textoCarga">Procesando solicitud...</p>
     </div>
 
     <div class="container">
         <h2>Panel StreamEvolution</h2>
-        <p>Gestor de Accesos Disney+</p>
+        <p>Gestor Central de Disney+</p>
         
         <input type="email" id="emailInput" placeholder="Correo del cliente (ej. juan+3@...)" required>
-        <button onclick="buscarCodigo()">Obtener Código</button>
+        
+        <div class="botones-container">
+            <button class="btn-codigo" onclick="realizarPeticion('/buscar-correo', 'Obteniendo Código...')">Código Acceso</button>
+            <button class="btn-hogar" onclick="realizarPeticion('/buscar-enlace-hogar', 'Buscando Enlace de Hogar...')">Actualizar Hogar</button>
+        </div>
 
-        <div class="result-box">
-            <span id="resultadoTexto" style="color: #666; font-size: 14px;">El código aparecerá aquí</span>
+        <div class="result-box" id="cajaResultado">
+            <span id="resultadoTexto" style="color: #666; font-size: 14px;">El resultado aparecerá aquí</span>
         </div>
     </div>
 
     <script>
-        async function buscarCodigo() {
+        async function realizarPeticion(ruta, mensajeCarga) {
             const email = document.getElementById('emailInput').value;
-            const resultadoSpan = document.getElementById('resultadoTexto');
+            const cajaResultado = document.getElementById('cajaResultado');
             const modal = document.getElementById('loadingModal');
+            const textoCarga = document.getElementById('textoCarga');
+            const spinner = document.getElementById('spinnerCarga');
             
             if(!email) {
                 alert("Por favor ingresa un correo electrónico válido.");
                 return;
             }
 
-            // 1. Mostrar la pantalla de carga elegante
+            // Configurar color del spinner dependiendo de la acción
+            spinner.style.borderTopColor = ruta.includes('hogar') ? '#e94057' : '#0072d2';
+            textoCarga.innerText = mensajeCarga;
             modal.classList.add('active');
             
-            // Limpiar resultados anteriores
-            resultadoSpan.className = "";
-            resultadoSpan.style.color = "";
-            resultadoSpan.innerText = "";
+            cajaResultado.innerHTML = '<span style="color: #666; font-size: 14px;">Procesando...</span>';
 
             try {
-                // Tu enlace de Railway ya configurado
-                const urlRailway = 'https://api-disney-bot-production.up.railway.app/buscar-correo'; 
+                // RECUERDA PONER TU ENLACE BASE DE RAILWAY AQUÍ
+                const baseUrlRailway = 'https://api-disney-bot-production.up.railway.app'; 
                 
-                const response = await fetch(urlRailway, {
+                const response = await fetch(baseUrlRailway + ruta, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email_usuario: email })
                 });
 
                 const data = await response.json();
-
-                // 2. Ocultar la pantalla de carga
                 modal.classList.remove('active');
 
-                // 3. Mostrar el resultado bonito
                 if (data.success) {
-                    // Verificamos si es un error disfrazado de éxito (ej. "No se encontraron...")
-                    if(data.codigo.includes("No se") || data.codigo.includes("Solo se")) {
-                        resultadoSpan.classList.add('result-error');
-                        resultadoSpan.innerText = data.codigo;
+                    if(data.tipo === 'codigo') {
+                        cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
+                    } else if (data.tipo === 'enlace') {
+                        // Si es un enlace, creamos un botón verde interactivo para darle clic
+                        cajaResultado.innerHTML = `
+                            <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace de Hogar encontrado!</span>
+                            <a href="${data.resultado}" target="_blank" class="btn-enlace-final">Abrir enlace de Disney</a>
+                        `;
                     } else {
-                        resultadoSpan.classList.add('result-text');
-                        resultadoSpan.innerText = data.codigo; 
+                        cajaResultado.innerHTML = `<span class="result-error">${data.resultado}</span>`;
                     }
                 } else {
-                    resultadoSpan.classList.add('result-error');
-                    resultadoSpan.innerText = data.mensaje || data.error;
+                    cajaResultado.innerHTML = `<span class="result-error">${data.mensaje || data.error}</span>`;
                 }
             } catch (error) {
                 modal.classList.remove('active');
-                resultadoSpan.classList.add('result-error');
-                resultadoSpan.innerText = "Error de red. Verifica tu conexión.";
+                cajaResultado.innerHTML = `<span class="result-error">Error de red. Verifica tu conexión a Railway.</span>`;
             }
         }
     </script>
