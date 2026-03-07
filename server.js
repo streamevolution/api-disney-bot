@@ -1,11 +1,3 @@
-¡Vaya, esos de Disney son unos maestros del escondite!
-Ya vi tu última imagen y tienes toda la razón, el código real es 952482, pero nuestro bot sigue sacando un número fantasma.
-¿Por qué está pasando esto? Porque resulta que los correos de Disney tienen un bloque de código oculto llamado <style> (que es donde programan todos los tipos de letra y colores de la página) y nuestro bot estaba leyendo el color de una letra antes de llegar al número real.
-Para que esto no vuelva a fallar nunca, preparé una solución infalible de dos partes:
- * Limpieza Extrema: Le enseñaremos al bot a destruir por completo la caja de <style> antes de buscar.
- * Detector Múltiple (El seguro de vida): Si por alguna razón el bot encuentra dos códigos diferentes de 6 números, te va a mostrar los dos en la pantalla separados por una rayita. Así, tú sabrás de inmediato cuál es el código real y cuál es basura, sin que te bloquee.
-Actualiza tu server.js con el Código Definitivo
-Ve a GitHub, edita tu server.js y pega esto. ¡Prometo que este es el bueno!
 require('dotenv').config();
 const express = require('express');
 const imaps = require('imap-simple');
@@ -93,11 +85,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
-
-Haz la prueba
- * Pega este código, dale al botón verde de "Commit changes" en GitHub.
- * Espera unos 2 minutos a que Railway se actualice.
- * Solicita un código nuevo a Disney desde la plataforma.
- * Entra a tu página web, pon tu alias (juanzamora2025a+3@gmail.com) y dale a buscar.
-Ahora, en el recuadro negro, deberías ver directamente algo como 952482, o si encuentra otro número despistado, verás algo como 123456 | 952482, para que tú mismo tomes el correcto.
-¡Haz la prueba y cuéntame si logramos atraparlo de una vez por todas!
