@@ -14,7 +14,7 @@ app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
 
-    try {nvvkhkhiihhhohohlhlhl
+    try {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
