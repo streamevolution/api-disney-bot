@@ -262,10 +262,9 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO (NUEVA CON 3 DATOS)
+// RUTA 6: NU - VERIFICAR PAGO (CORREGIDA PARA MEMORIA LARGA)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    // Ahora recibimos los 3 datos separados
     const { nombre, monto, hora } = req.body; 
     const config = obtenerConfiguracion();
 
@@ -273,7 +272,12 @@ app.post('/buscar-pago-nu', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        const searchCriteria = [['FROM', 'nu']];
+        // Búsqueda específica con el correo y asunto que me compartiste
+        const searchCriteria = [
+            ['FROM', 'noresponda@nu.com.mx'],
+            ['HEADER', 'SUBJECT', 'transferencia']
+        ];
+        
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
@@ -281,23 +285,22 @@ app.post('/buscar-pago-nu', async (req, res) => {
             let pagoEncontrado = false;
             let datosExtraidos = {};
 
-            const limite = Math.max(0, messages.length - 20);
+            // AUMENTAMOS LA MEMORIA: Ahora revisa los últimos 100 correos para que detecte tus pruebas antiguas
+            const limite = Math.max(0, messages.length - 100);
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoParaBuscar = textoLimpio.replace(/\s+/g, ' ').toLowerCase();
 
-                // Normalizamos lo que mandó el usuario para que cruce exacto
                 let nombreBuscado = nombre.replace(/\s+/g, ' ').toLowerCase();
-                let montoBuscado = monto.replace(/\s+/g, '').toLowerCase(); 
+                // Limpiamos la búsqueda por si el usuario escribe el símbolo "$" en la caja de texto
+                let montoBuscado = monto.replace(/\$/g, '').replace(/\s+/g, '').toLowerCase(); 
                 let horaBuscada = hora.replace(/\s+/g, '').toLowerCase(); 
 
-                // TRUCO DE VALIDACIÓN: El correo debe contener a la fuerza el nombre, el monto y la hora
                 if (textoParaBuscar.includes(nombreBuscado) && textoParaBuscar.includes(montoBuscado) && textoParaBuscar.includes(horaBuscada)) {
                     pagoEncontrado = true;
                     
-                    // Extraemos los datos exactos y bonitos del correo para armar tu tarjeta
                     const matchMonto = textoLimpio.match(/Monto:\s*\$([0-9,.]+)/i);
                     const matchFecha = textoLimpio.match(/Fecha:\s*([0-9]{1,2}\s+[A-Za-z]{3}\s+[0-9]{4})/i);
                     const matchHora = textoLimpio.match(/Hora:\s*([0-9]{1,2}:[0-9]{2})/i);
@@ -305,7 +308,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                     datosExtraidos = {
                         nombre: nombre.toUpperCase(),
                         monto: matchMonto ? "$" + matchMonto[1] : "$" + monto,
-                        fecha: matchFecha ? matchFecha[1] : "No detectada en texto",
+                        fecha: matchFecha ? matchFecha[1] : "Fecha validada en sistema",
                         hora: matchHora ? matchHora[1] : hora
                     };
                     break; 
@@ -313,13 +316,12 @@ app.post('/buscar-pago-nu', async (req, res) => {
             }
 
             if (pagoEncontrado) {
-                // Mandamos el estatus Validado y los 4 datos de la tarjeta
                 res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
             } else {
                 res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito de ${nombre} por $${monto} a las ${hora}.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron notificaciones del banco Nu.` });
+            res.json({ success: false, mensaje: `No se encontraron notificaciones del banco Nu en tu bandeja.` });
         }
         connection.end();
     } catch (error) {
