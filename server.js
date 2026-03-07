@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// RUTA 1: DISNEY - ACCESO (INTACTA E INTOCABLE)
+// RUTA 1: DISNEY - ACCESO (INTACTA)
 // ==========================================
 app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -54,7 +54,7 @@ app.post('/buscar-correo', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 2: DISNEY - HOGAR (INTACTA E INTOCABLE)
+// RUTA 2: DISNEY - HOGAR (INTACTA)
 // ==========================================
 app.post('/buscar-enlace-hogar', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -100,7 +100,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 3: VIX - ENLACE DE CONTRASEÑA (ACTUALIZADA CON TU ENLACE)
+// RUTA 3: VIX - ENLACE DE CONTRASEÑA (INTACTA)
 // ==========================================
 app.post('/buscar-enlace-vix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -121,17 +121,11 @@ app.post('/buscar-enlace-vix', async (req, res) => {
 
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
-            
-            // Reparamos el código roto del correo
             let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
-            
-            // EXTRAE ENLACES HTTP y HTTPS (Gracias al enlace que nos pasaste)
             const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
-
-            // Limpiamos comillas accidentales y filtramos basura
             const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                link.toLowerCase().includes('vix') && // Aseguramos que sea de Vix
+                link.toLowerCase().includes('vix') && 
                 !link.toLowerCase().includes('.png') && 
                 !link.toLowerCase().includes('.jpg') && 
                 !link.toLowerCase().includes('.gif') && 
@@ -148,11 +142,8 @@ app.post('/buscar-enlace-vix', async (req, res) => {
             );
 
             if (enlacesLimpios.length > 0) {
-                // EL TRUCO: Ordenamos los enlaces del más largo al más corto.
-                // Tu enlace era gigantesco, así que siempre quedará en primer lugar.
                 enlacesLimpios.sort((a, b) => b.length - a.length);
                 const enlaceReal = enlacesLimpios[0];
-
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
                 res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
@@ -163,6 +154,55 @@ app.post('/buscar-enlace-vix', async (req, res) => {
         connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    }
+});
+
+// ==========================================
+// RUTA 4: NETFLIX - CÓDIGO DE INICIO (NUEVA)
+// ==========================================
+app.post('/buscar-codigo-netflix', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+
+    try {
+        const connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'info@account.netflix.com'],
+            ['HEADER', 'SUBJECT', 'Netflix: Tu código de inicio de sesión'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const rawBody = messages[messages.length - 1].parts[0].body;
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            
+            // Netflix usa códigos de 4 dígitos. Esta regla atrapa el número incluso si tiene espacios en medio (ej. 6 3 6 8)
+            const regexCodigo = /\b\d(?:\s*\d){3}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                // Le quitamos los espacios en blanco que Netflix le haya puesto para que te lo muestre como "6368"
+                const codigosLimpios = coincidencias.map(num => num.replace(/\s+/g, ''));
+                
+                if (codigosLimpios.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosLimpios)].join('   |   ') });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 4 dígitos del código." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de Netflix para: ${email_usuario}` });
+        }
+        connection.end();
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
     }
 });
 
