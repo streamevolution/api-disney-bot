@@ -143,8 +143,7 @@ app.post('/buscar-enlace-vix', async (req, res) => {
 
             if (enlacesLimpios.length > 0) {
                 enlacesLimpios.sort((a, b) => b.length - a.length);
-                const enlaceReal = enlacesLimpios[0];
-                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0] });
             } else {
                 res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
             }
@@ -158,7 +157,7 @@ app.post('/buscar-enlace-vix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 4: NETFLIX - CÓDIGO DE INICIO (CORREGIDA)
+// RUTA 4: NETFLIX - CÓDIGO DE INICIO (INTACTA)
 // ==========================================
 app.post('/buscar-codigo-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -186,10 +185,7 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
 
             if (coincidencias) {
                 const codigosLimpios = coincidencias.map(num => num.replace(/\s+/g, ''));
-                
                 if (codigosLimpios.length > 0) {
-                    // EL TRUCO: Solo tomamos el primer resultado del arreglo (codigosLimpios[0])
-                    // porque ese siempre es el código principal, ignorando los de abajo.
                     res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0] });
                 } else {
                     res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
@@ -203,6 +199,67 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
         connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    }
+});
+
+// ==========================================
+// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA (NUEVA)
+// ==========================================
+app.post('/buscar-pass-netflix', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+
+    try {
+        const connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'info@account.netflix.com'],
+            ['HEADER', 'SUBJECT', 'restablecimiento'], // Usamos palabra clave de tu título
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const rawBody = messages[messages.length - 1].parts[0].body;
+            
+            // Limpiamos formato oculto
+            let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+            
+            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+
+            // Filtramos basura e imágenes
+            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                link.toLowerCase().includes('netflix') && 
+                !link.toLowerCase().includes('.png') && 
+                !link.toLowerCase().includes('.jpg') && 
+                !link.toLowerCase().includes('.gif') && 
+                !link.toLowerCase().includes('logo') && 
+                !link.toLowerCase().includes('pixel') && 
+                !link.toLowerCase().includes('facebook') && 
+                !link.toLowerCase().includes('twitter') && 
+                !link.toLowerCase().includes('instagram') && 
+                !link.toLowerCase().includes('help')
+            );
+
+            if (enlacesLimpios.length > 0) {
+                // Tomamos el enlace más largo (el que contiene el token gigante)
+                enlacesLimpios.sort((a, b) => b.length - a.length);
+                const enlaceReal = enlacesLimpios[0];
+
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Netflix para: ${email_usuario}` });
+        }
+        connection.end();
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
     }
 });
 
