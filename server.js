@@ -203,7 +203,7 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA (CORREGIDA ANTI-PIXEL)
+// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA (INTACTA)
 // ==========================================
 app.post('/buscar-pass-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -230,10 +230,9 @@ app.post('/buscar-pass-netflix', async (req, res) => {
             const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
-            // FILTRO MEJORADO: Bloqueamos a "beaconimages" que era el píxel tramposo
             const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
                 link.toLowerCase().includes('netflix') && 
-                !link.toLowerCase().includes('beaconimages') && // <--- ESTE ES EL ESCUDO
+                !link.toLowerCase().includes('beaconimages') && 
                 !link.toLowerCase().includes('.png') && 
                 !link.toLowerCase().includes('.jpg') && 
                 !link.toLowerCase().includes('.gif') && 
@@ -259,6 +258,72 @@ app.post('/buscar-pass-netflix', async (req, res) => {
         connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    }
+});
+
+// ==========================================
+// RUTA 6: NU - VERIFICAR PAGO (NUEVA CON 3 DATOS)
+// ==========================================
+app.post('/buscar-pago-nu', async (req, res) => {
+    // Ahora recibimos los 3 datos separados
+    const { nombre, monto, hora } = req.body; 
+    const config = obtenerConfiguracion();
+
+    try {
+        const connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [['FROM', 'nu']];
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            let pagoEncontrado = false;
+            let datosExtraidos = {};
+
+            const limite = Math.max(0, messages.length - 20);
+            for (let i = messages.length - 1; i >= limite; i--) {
+                const rawBody = messages[i].parts[0].body;
+                
+                let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+                let textoParaBuscar = textoLimpio.replace(/\s+/g, ' ').toLowerCase();
+
+                // Normalizamos lo que mandó el usuario para que cruce exacto
+                let nombreBuscado = nombre.replace(/\s+/g, ' ').toLowerCase();
+                let montoBuscado = monto.replace(/\s+/g, '').toLowerCase(); 
+                let horaBuscada = hora.replace(/\s+/g, '').toLowerCase(); 
+
+                // TRUCO DE VALIDACIÓN: El correo debe contener a la fuerza el nombre, el monto y la hora
+                if (textoParaBuscar.includes(nombreBuscado) && textoParaBuscar.includes(montoBuscado) && textoParaBuscar.includes(horaBuscada)) {
+                    pagoEncontrado = true;
+                    
+                    // Extraemos los datos exactos y bonitos del correo para armar tu tarjeta
+                    const matchMonto = textoLimpio.match(/Monto:\s*\$([0-9,.]+)/i);
+                    const matchFecha = textoLimpio.match(/Fecha:\s*([0-9]{1,2}\s+[A-Za-z]{3}\s+[0-9]{4})/i);
+                    const matchHora = textoLimpio.match(/Hora:\s*([0-9]{1,2}:[0-9]{2})/i);
+
+                    datosExtraidos = {
+                        nombre: nombre.toUpperCase(),
+                        monto: matchMonto ? "$" + matchMonto[1] : "$" + monto,
+                        fecha: matchFecha ? matchFecha[1] : "No detectada en texto",
+                        hora: matchHora ? matchHora[1] : hora
+                    };
+                    break; 
+                }
+            }
+
+            if (pagoEncontrado) {
+                // Mandamos el estatus Validado y los 4 datos de la tarjeta
+                res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito de ${nombre} por $${monto} a las ${hora}.` });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontraron notificaciones del banco Nu.` });
+        }
+        connection.end();
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
     }
 });
 
