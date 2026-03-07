@@ -6,7 +6,7 @@
     <title>Panel de Control</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* BASE FLAT DESIGN - Diseño Plano Profesional (INTACTO) */
+        /* BASE FLAT DESIGN */
         body {
             background-color: #0f172a; 
             color: #f8fafc;
@@ -51,6 +51,8 @@
             margin-bottom: 6px;
             font-weight: 500;
         }
+        
+        /* Agregamos color-scheme: dark para que el calendario se vea elegante y oscuro */
         select, input {
             width: 100%;
             box-sizing: border-box;
@@ -64,6 +66,7 @@
             outline: none;
             transition: border-color 0.2s;
             appearance: none; 
+            color-scheme: dark; 
         }
         
         select {
@@ -178,7 +181,7 @@
                 </div>
                 <div class="form-group" style="flex: 1;">
                     <label>Fecha</label>
-                    <input type="text" id="nuFecha" placeholder="Ej. 05 MAR 2026">
+                    <input type="date" id="nuFecha">
                 </div>
             </div>
         </div>
@@ -231,6 +234,26 @@
 
         actualizarOpciones();
 
+        // ¡NUEVA FUNCIÓN! Traductor del Calendario al formato estricto de Nu
+        function convertirFechaNu(fechaCalendario) {
+            if (!fechaCalendario) return "";
+            
+            // El calendario arroja "YYYY-MM-DD"
+            const partes = fechaCalendario.split('-');
+            const anio = partes[0];
+            const mesNum = partes[1];
+            const dia = partes[2];
+
+            const mesesEspanol = {
+                '01': 'ENE', '02': 'FEB', '03': 'MAR', '04': 'ABR', 
+                '05': 'MAY', '06': 'JUN', '07': 'JUL', '08': 'AGO', 
+                '09': 'SEP', '10': 'OCT', '11': 'NOV', '12': 'DIC'
+            };
+
+            // Devuelve algo como "05 MAR 2026"
+            return `${dia} ${mesesEspanol[mesNum]} ${anio}`;
+        }
+
         function ejecutarAccion() {
             const accion = document.getElementById('accionSelect').value;
             const plataforma = document.getElementById('plataformaSelect').value;
@@ -239,13 +262,18 @@
             let payload = {};
 
             if (plataforma === 'nu') {
+                // Obtenemos el valor del calendario y lo traducimos
+                const fechaCruda = document.getElementById('nuFecha').value;
+                const fechaTraducida = convertirFechaNu(fechaCruda);
+
                 payload = {
                     nombre: document.getElementById('nuNombre').value,
                     monto: document.getElementById('nuMonto').value,
-                    fecha: document.getElementById('nuFecha').value // AHORA ENVIAMOS FECHA
+                    fecha: fechaTraducida 
                 };
-                if(!payload.nombre || !payload.monto || !payload.fecha) {
-                    alert("Por favor llena Nombre, Monto y Fecha de la transferencia."); return;
+
+                if(!payload.nombre || !payload.monto || !fechaCruda) {
+                    alert("Por favor llena Nombre, Monto y selecciona la Fecha en el calendario."); return;
                 }
             } else {
                 payload = { email_usuario: document.getElementById('emailInput').value };
@@ -306,7 +334,6 @@
                             <a href="${data.resultado}" target="_blank" class="btn-enlace-final">${textoBoton}</a>
                         `;
                     } else if (data.tipo === 'pago') {
-                        // TARJETA DE VALIDACIÓN (DIBUJADA EXACTAMENTE COMO LA PEDISTE)
                         cajaResultado.innerHTML = `
                             <span class="result-text" style="font-size: 24px; margin-bottom: 12px; display: inline-block;">✅ ${data.resultado}</span>
                             <div style="text-align: left; background: #334155; padding: 15px; border-radius: 8px; width: 100%; box-sizing: border-box;">
