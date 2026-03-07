@@ -4,14 +4,13 @@ const imaps = require('imap-simple');
 const cors = require('cors');
 
 const app = express();
-
-// Permite que tu frontend HTML se comunique sin bloqueos de seguridad en el navegador
 app.use(cors());
-// Permite que el servidor entienda los datos que le mandas en formato JSON
 app.use(express.json());
 
 app.post('/buscar-correo', async (req, res) => {
-    // 1. Configuramos la conexión usando las Variables de Entorno de Railway
+    // Recibimos el correo que escribiste en tu página web
+    const { email_usuario } = req.body; 
+
     const config = {
         imap: {
             user: process.env.EMAIL_USER,
@@ -19,56 +18,52 @@ app.post('/buscar-correo', async (req, res) => {
             host: 'imap.gmail.com',
             port: 993,
             tls: true,
-            tlsOptions: { rejectUnauthorized: false }, // Evita errores de certificado en servidores externos
+            tlsOptions: { rejectUnauthorized: false },
             authTimeout: 3000
         }
     };
 
     try {
-        console.log("Conectando a la bandeja de entrada...");
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 2. Criterio de búsqueda: Todos los correos que vengan de disneyplus.com
-        // Si quisieras SOLO los no leídos, cambiarías esto a: ['UNSEEN', ['FROM', 'disneyplus.com']]
-        const searchCriteria = [['FROM', 'disneyplus.com']];
+        // NUEVO FILTRO: Buscar correos de Disney+ dirigidos AL correo que escribiste en la página
+        const searchCriteria = [
+            ['FROM', 'disneyplus.com'],
+            ['TO', email_usuario] 
+        ];
         
-        // 3. Opciones de descarga: Traer el texto y no marcarlo como leído automáticamente
-        const fetchOptions = {
-            bodies: ['TEXT'],
-            markSeen: false 
-        };
-
-        console.log("Buscando mensajes de Disney+...");
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            // 4. Seleccionamos el mensaje más reciente (el último de la lista)
             const ultimoMensaje = messages[messages.length - 1];
-            
-            // 5. Extraemos el código fuente o texto del mensaje
-            const rawCode = ultimoMensaje.parts[0].body;
+            const rawBody = ultimoMensaje.parts[0].body;
 
-            // Enviamos el éxito y el código de vuelta a tu página HTML
-            res.json({ success: true, codigo: rawCode });
+            // FILTRO INTELIGENTE: Buscar exactamente 6 números seguidos dentro de todo el código HTML
+            const regexCodigo = /\b\d{6}\b/;
+            const coincidencia = rawBody.match(regexCodigo);
+
+            if (coincidencia) {
+                // Si encuentra los 6 números, te manda solo el código
+                res.json({ success: true, codigo: coincidencia[0] });
+            } else {
+                // Si no encuentra números (por si Disney cambia el formato)
+                res.json({ success: true, codigo: "No se detectaron los 6 dígitos. Revisa tu bandeja." });
+            }
         } else {
-            res.json({ success: false, mensaje: "No se encontraron correos de Disney+ en esta bandeja." });
+            res.json({ success: false, mensaje: `No hay correos recientes de Disney para: ${email_usuario}` });
         }
 
-        // Cerramos la conexión con el correo
         connection.end();
 
     } catch (error) {
-        console.error("Error en el servidor:", error);
-        res.status(500).json({ 
-            success: false, 
-            error: "Error interno: Revisa que tu EMAIL_USER y EMAIL_PASS estén correctos en Railway." 
-        });
+        console.error("Error:", error);
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
     }
 });
 
-// 6. Iniciamos el servidor en el puerto que asigne Railway (o el 3000 de forma local)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor backend corriendo exitosamente en el puerto ${PORT}`);
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
