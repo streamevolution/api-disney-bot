@@ -203,7 +203,7 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA (NUEVA)
+// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA (CORREGIDA ANTI-PIXEL)
 // ==========================================
 app.post('/buscar-pass-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -215,7 +215,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 
         const searchCriteria = [
             ['FROM', 'info@account.netflix.com'],
-            ['HEADER', 'SUBJECT', 'restablecimiento'], // Usamos palabra clave de tu título
+            ['HEADER', 'SUBJECT', 'restablecimiento'], 
             ['TO', email_usuario] 
         ];
         
@@ -225,15 +225,15 @@ app.post('/buscar-pass-netflix', async (req, res) => {
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
             
-            // Limpiamos formato oculto
             let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
             
             const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
-            // Filtramos basura e imágenes
+            // FILTRO MEJORADO: Bloqueamos a "beaconimages" que era el píxel tramposo
             const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
                 link.toLowerCase().includes('netflix') && 
+                !link.toLowerCase().includes('beaconimages') && // <--- ESTE ES EL ESCUDO
                 !link.toLowerCase().includes('.png') && 
                 !link.toLowerCase().includes('.jpg') && 
                 !link.toLowerCase().includes('.gif') && 
@@ -246,7 +246,6 @@ app.post('/buscar-pass-netflix', async (req, res) => {
             );
 
             if (enlacesLimpios.length > 0) {
-                // Tomamos el enlace más largo (el que contiene el token gigante)
                 enlacesLimpios.sort((a, b) => b.length - a.length);
                 const enlaceReal = enlacesLimpios[0];
 
