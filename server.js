@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// RUTA 1: DISNEY - ACCESO (INTACTA)
+// RUTA 1: DISNEY - ACCESO (INTACTA E INTOCABLE)
 // ==========================================
 app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -54,7 +54,7 @@ app.post('/buscar-correo', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 2: DISNEY - HOGAR (INTACTA)
+// RUTA 2: DISNEY - HOGAR (INTACTA E INTOCABLE)
 // ==========================================
 app.post('/buscar-enlace-hogar', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -100,7 +100,7 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 3: VIX - ENLACE DE CONTRASEÑA (ACTUALIZADA)
+// RUTA 3: VIX - ENLACE DE CONTRASEÑA (ACTUALIZADA ANTI-IMÁGENES)
 // ==========================================
 app.post('/buscar-enlace-vix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -122,15 +122,26 @@ app.post('/buscar-enlace-vix', async (req, res) => {
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
             
-            // EL TRUCO: Reparamos el código roto y los signos de igual del correo antes de buscar
+            // Reparamos el código roto del correo
             let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
             
-            // RASTREADOR DE ENLACES MÁS POTENTE: Extrae cualquier cosa que empiece con https://
+            // Rastreamos todas las URLs
             const regexEnlaces = /https:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
-            // FILTRO INTELIGENTE: Eliminamos los enlaces basura (Términos, Privacidad, Redes Sociales)
+            // FILTRO SÚPER MEJORADO: Explicitamente ignoramos todo lo que parezca imagen o rastreo
             const enlaceReal = enlacesEncontrados.find(link => 
+                link.toLowerCase().includes('vix') && // Debe contener Vix
+                // ESCUDO ANTI-IMÁGENES
+                !link.toLowerCase().includes('image') && 
+                !link.toLowerCase().includes('assets') && 
+                !link.toLowerCase().includes('logo') && 
+                !link.toLowerCase().includes('pixel') && 
+                !link.toLowerCase().includes('.png') && 
+                !link.toLowerCase().includes('.jpg') && 
+                !link.toLowerCase().includes('.gif') && 
+                !link.toLowerCase().includes('.css') && 
+                // FILTROS BASURA ANTERIORES
                 !link.toLowerCase().includes('privacy') && 
                 !link.toLowerCase().includes('legal') && 
                 !link.toLowerCase().includes('support') && 
@@ -143,10 +154,9 @@ app.post('/buscar-enlace-vix', async (req, res) => {
             );
 
             if (enlaceReal) {
-                // Si encontramos un enlace válido, lo mandamos
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no pudimos extraer el botón (formato desconocido)." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no pudimos filtrar el botón de los demás enlaces ocultos." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de cambio de contraseña de Vix para: ${email_usuario}` });
