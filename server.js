@@ -336,7 +336,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 7: CRUNCHYROLL - ENLACE (NUEVO ESCÁNER ESTRUCTURAL)
+// RUTA 7: CRUNCHYROLL - ENLACE (CORREGIDA CON TEXTO DE IMAGEN)
 // ==========================================
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -357,35 +357,38 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
 
         if (messages.length > 0) {
             const rawBody = messages[messages.length - 1].parts[0].body;
-            let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
-            let bodyLower = bodyLimpio.toLowerCase();
+            
+            // 1. Limpiamos comillas y saltos HTML básicos
+            let bodyHTML = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
 
-            // 1. Extraemos TODAS las URLs y guardamos su posición exacta
-            const regex = /href=["'](https?:\/\/[^"']+)["']/gi;
-            let match;
-            let enlacesConPosicion = [];
-            while ((match = regex.exec(bodyLimpio)) !== null) {
-                enlacesConPosicion.push({ url: match[1], pos: match.index });
-            }
-
-            // 2. Buscamos dónde dice exactamente la palabra clave
-            let posObjetivo = bodyLower.indexOf('haz clic');
-            if (posObjetivo === -1) posObjetivo = bodyLower.indexOf('click');
+            // 2. Regex quirúrgica para encontrar tags <a> completos
+            // Captura grupo 1 (HREF) y grupo 2 (TEXTO INTERNO)
+            const regexTagA = /<a[^>]+href=["'](https?:\/\/links\.mail\.crunchyroll\.com\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
             let enlaceReal = null;
+            let match;
 
-            // 3. El truco maestro: El enlace correcto SIEMPRE es el que está pegado antes de "haz clic"
-            if (posObjetivo !== -1 && enlacesConPosicion.length > 0) {
-                let enlacesAntes = enlacesConPosicion.filter(e => e.pos < posObjetivo);
-                if (enlacesAntes.length > 0) {
-                    enlaceReal = enlacesAntes[enlacesAntes.length - 1].url;
+            // Iteramos por los tags HTML estructurales
+            while ((match = regexTagA.exec(bodyHTML)) !== null) {
+                let hrefCandidato = match[1];
+                let textoInternoCandidato = match[2];
+
+                // Normalizamos el texto interno para buscar la palabra clave exacta proporcionada en image_0.png
+                // (Quitamos tags HTML internos, espacios dobles y mayúsculas)
+                let textoNormalizado = textoInternoCandidato.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+
+                // Verificación quirúrgica: El texto del botón debe ser idéntico al que me mostraste
+                if (textoNormalizado.includes("NUEVA CONTRASEÑA")) {
+                    enlaceReal = hrefCandidato;
+                    break; // Botón encontrado, salir.
                 }
             }
 
             if (enlaceReal) {
                 res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se pudo ubicar el botón exacto." });
+                // Si llegamos aquí, el correo existe pero el HTML es diferente al esperado
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero el botón no dice exactamente 'NUEVA CONTRASEÑA'." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
