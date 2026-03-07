@@ -14,12 +14,12 @@ app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
 
-    try {
+    try {mlmdkdldkslsñxlcllc
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
-            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
+            ['FROM', 'disneyplus@trx.mail2.disnekxkxkxyplus.com'],
             ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'],
             ['TO', email_usuario] 
         ];
