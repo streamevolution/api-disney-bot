@@ -7,6 +7,21 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Función para formatear la fecha a hora de México
+function formatearFecha(dateInput) {
+    if (!dateInput) return "Fecha desconocida";
+    try {
+        const d = new Date(dateInput);
+        return d.toLocaleString('es-MX', { 
+            timeZone: 'America/Mexico_City',
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+        });
+    } catch (e) {
+        return "Fecha desconocida";
+    }
+}
+
 // ==========================================
 // RUTA 1: DISNEY - ACCESO 
 // ==========================================
@@ -28,16 +43,18 @@ app.post('/buscar-correo', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            
             const regexCodigo = /\b\d{6}\b/g; 
             const coincidencias = textoLimpio.match(regexCodigo);
 
             if (coincidencias) {
                 const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
                 if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   ') });
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
                 } else {
                     res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
                 }
@@ -74,24 +91,26 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            
             const regexCodigo = /\b\d{6}\b/g; 
             const coincidencias = textoLimpio.match(regexCodigo);
 
             if (coincidencias) {
                 const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
                 if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   ') });
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
                 } else {
                     res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos en el correo de hogar." });
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos en el correo." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró el correo de Actualización de Hogar para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró el correo de Hogar para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
@@ -120,35 +139,25 @@ app.post('/buscar-enlace-vix', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
             const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
             const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                link.toLowerCase().includes('vix') && 
-                !link.toLowerCase().includes('.png') && 
-                !link.toLowerCase().includes('.jpg') && 
-                !link.toLowerCase().includes('.gif') && 
-                !link.toLowerCase().includes('logo') && 
-                !link.toLowerCase().includes('image') && 
-                !link.toLowerCase().includes('pixel') && 
-                !link.toLowerCase().includes('facebook') && 
-                !link.toLowerCase().includes('twitter') && 
-                !link.toLowerCase().includes('instagram') && 
-                !link.toLowerCase().includes('help') && 
-                !link.toLowerCase().includes('support') && 
-                !link.toLowerCase().includes('privacy') && 
-                !link.toLowerCase().includes('legal')
+                link.toLowerCase().includes('vix') && !link.toLowerCase().includes('.png') && !link.toLowerCase().includes('.jpg') && !link.toLowerCase().includes('help')
             );
 
             if (enlacesLimpios.length > 0) {
                 enlacesLimpios.sort((a, b) => b.length - a.length);
-                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0] });
+                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0], fecha: fechaCorreo });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no enlaces válidos." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró un correo de cambio de contraseña de Vix para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró correo de restablecimiento de Vix para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
@@ -177,21 +186,23 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            
             const regexCodigo = /\b\d(?:\s*\d){3}\b/g; 
             const coincidencias = textoLimpio.match(regexCodigo);
 
             if (coincidencias) {
                 const codigosLimpios = coincidencias.map(num => num.replace(/\s+/g, ''));
                 if (codigosLimpios.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0] });
+                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0], fecha: fechaCorreo });
                 } else {
                     res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 4 dígitos del código." });
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 4 dígitos." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un código de Netflix para: ${email_usuario}` });
@@ -223,37 +234,26 @@ app.post('/buscar-pass-netflix', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
             
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            
             const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
             const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
 
             const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                link.toLowerCase().includes('netflix') && 
-                !link.toLowerCase().includes('beaconimages') && 
-                !link.toLowerCase().includes('.png') && 
-                !link.toLowerCase().includes('.jpg') && 
-                !link.toLowerCase().includes('.gif') && 
-                !link.toLowerCase().includes('logo') && 
-                !link.toLowerCase().includes('pixel') && 
-                !link.toLowerCase().includes('facebook') && 
-                !link.toLowerCase().includes('twitter') && 
-                !link.toLowerCase().includes('instagram') && 
-                !link.toLowerCase().includes('help')
+                link.toLowerCase().includes('netflix') && !link.toLowerCase().includes('.png') && !link.toLowerCase().includes('help')
             );
 
             if (enlacesLimpios.length > 0) {
                 enlacesLimpios.sort((a, b) => b.length - a.length);
-                const enlaceReal = enlacesLimpios[0];
-
-                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0], fecha: fechaCorreo });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no enlaces válidos." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Netflix para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró correo de restablecimiento de Netflix para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
@@ -262,7 +262,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO 
+// RUTA 6: NU - VERIFICAR PAGO (REDUCIDO A 20)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { nombre, monto, fecha } = req.body; 
@@ -272,10 +272,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        const searchCriteria = [
-            ['HEADER', 'SUBJECT', 'transferencia']
-        ];
-        
+        const searchCriteria = [['HEADER', 'SUBJECT', 'transferencia']];
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
@@ -283,7 +280,9 @@ app.post('/buscar-pago-nu', async (req, res) => {
             let pagoEncontrado = false;
             let datosExtraidos = {};
 
-            const limite = Math.max(0, messages.length - 100);
+            // LÍMITE REGRESADO A 20 COMO LO PEDISTE
+            const limite = Math.max(0, messages.length - 20);
+            
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
@@ -356,9 +355,11 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            
             const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
             
             let enlaceReal = null;
@@ -384,9 +385,9 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
             }
 
             if (enlaceReal) {
-                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal, fecha: fechaCorreo });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el enlace 'haz clic'." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el enlace." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
@@ -418,21 +419,23 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            
             const regexCodigo = /\b\d{6}\b/g; 
             const coincidencias = textoLimpio.match(regexCodigo);
 
             if (coincidencias) {
                 const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
                 if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   ') });
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
                 } else {
-                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores hexadecimales." });
+                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos del código." });
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un código de HBO Max para: ${email_usuario}` });
@@ -444,7 +447,7 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 9: HBO MAX - ENLACE DE CONTRASEÑA (NUEVA)
+// RUTA 9: HBO MAX - ENLACE DE CONTRASEÑA 
 // ==========================================
 app.post('/buscar-pass-hbo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -454,7 +457,6 @@ app.post('/buscar-pass-hbo', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Busca la parte estática del título (sin importar la hora)
         const searchCriteria = [
             ['FROM', 'no-reply@alerts.hbomax.com'],
             ['HEADER', 'SUBJECT', 'restablecer tu contraseña'], 
@@ -465,15 +467,16 @@ app.post('/buscar-pass-hbo', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            
             const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
             
             let enlaceReal = null;
             let match;
 
-            // Busca el botón que dice "RESTABLECER CONTRASEÑA"
             while ((match = regexTagA.exec(bodyLimpio)) !== null) {
                 let url = match[1];
                 let textoInterno = match[2].toUpperCase().replace(/<[^>]+>/g, '');
@@ -484,15 +487,11 @@ app.post('/buscar-pass-hbo', async (req, res) => {
                 }
             }
 
-            // Respaldo de seguridad: Toma el enlace más largo (ignora basuras)
             if (!enlaceReal) {
                 const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
                 const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
                 const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                    !link.toLowerCase().includes('.png') && 
-                    !link.toLowerCase().includes('.jpg') && 
-                    !link.toLowerCase().includes('.gif') && 
-                    !link.toLowerCase().includes('help')
+                    !link.toLowerCase().includes('.png') && !link.toLowerCase().includes('help')
                 );
                 
                 if (enlacesLimpios.length > 0) {
@@ -502,9 +501,9 @@ app.post('/buscar-pass-hbo', async (req, res) => {
             }
 
             if (enlaceReal) {
-                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal, fecha: fechaCorreo });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el botón de restablecer." });
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el botón." });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de HBO Max para: ${email_usuario}` });
