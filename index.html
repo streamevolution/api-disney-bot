@@ -1,224 +1,282 @@
-require('dotenv').config();
-const express = require('express');
-const imaps = require('imap-simple');
-const cors = require('cors');
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// ==========================================
-// RUTA 1: DISNEY - ACCESO (INTACTA)
-// ==========================================
-app.post('/buscar-correo', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-
-    try {
-        const connection = await imaps.c
-        await connection.openBox('INBOX');
-
-        const searchCriteria = [
-            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
-            ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'],
-            ['TO', email_usuario] 
-        ];
-        
-        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
-        const messages = await connection.search(searchCriteria, fetchOptions);
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            
-            const regexCodigo = /\b\d{6}\b/g; 
-            const coincidencias = textoLimpio.match(regexCodigo);
-
-            if (coincidencias) {
-                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   ') });
-                } else {
-                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
-                }
-            } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
-            }
-        } else {
-            res.json({ success: false, mensaje: `No se encontró un código de acceso para: ${email_usuario}` });
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* BASE FLAT DESIGN - Diseño Plano Profesional (INTACTO) */
+        body {
+            background-color: #0f172a; 
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
         }
-        connection.end();
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Error interno del servidor." });
-    }
-});
-
-// ==========================================
-// RUTA 2: DISNEY - HOGAR (INTACTA)
-// ==========================================
-app.post('/buscar-enlace-hogar', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-
-    try {
-        const connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-
-        const searchCriteria = [
-            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
-            ['HEADER', 'SUBJECT', 'Hogar'],
-            ['TO', email_usuario] 
-        ];
-        
-        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
-        const messages = await connection.search(searchCriteria, fetchOptions);
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            
-            const regexCodigo = /\b\d{6}\b/g; 
-            const coincidencias = textoLimpio.match(regexCodigo);
-
-            if (coincidencias) {
-                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   ') });
-                } else {
-                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
-                }
-            } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos en el correo de hogar." });
-            }
-        } else {
-            res.json({ success: false, mensaje: `No se encontró el correo de Actualización de Hogar para: ${email_usuario}` });
+        .panel {
+            background-color: #1e293b; 
+            padding: 40px 30px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 380px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
         }
-        connection.end();
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Error interno del servidor." });
-    }
-});
-
-// ==========================================
-// RUTA 3: VIX - ENLACE DE CONTRASEÑA (INTACTA)
-// ==========================================
-app.post('/buscar-enlace-vix', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-
-    try {
-        const connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-
-        const searchCriteria = [
-            ['FROM', 'vix@vix.com'],
-            ['HEADER', 'SUBJECT', 'contraseña'], 
-            ['TO', email_usuario] 
-        ];
-        
-        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
-        const messages = await connection.search(searchCriteria, fetchOptions);
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
-            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
-            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
-            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
-                link.toLowerCase().includes('vix') && 
-                !link.toLowerCase().includes('.png') && 
-                !link.toLowerCase().includes('.jpg') && 
-                !link.toLowerCase().includes('.gif') && 
-                !link.toLowerCase().includes('logo') && 
-                !link.toLowerCase().includes('image') && 
-                !link.toLowerCase().includes('pixel') && 
-                !link.toLowerCase().includes('facebook') && 
-                !link.toLowerCase().includes('twitter') && 
-                !link.toLowerCase().includes('instagram') && 
-                !link.toLowerCase().includes('help') && 
-                !link.toLowerCase().includes('support') && 
-                !link.toLowerCase().includes('privacy') && 
-                !link.toLowerCase().includes('legal')
-            );
-
-            if (enlacesLimpios.length > 0) {
-                enlacesLimpios.sort((a, b) => b.length - a.length);
-                const enlaceReal = enlacesLimpios[0];
-                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
-            } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
-            }
-        } else {
-            res.json({ success: false, mensaje: `No se encontró un correo de cambio de contraseña de Vix para: ${email_usuario}` });
+        h2 {
+            margin: 0 0 5px 0;
+            font-weight: 600;
+            font-size: 24px;
+            color: #f1f5f9;
+            text-align: center;
         }
-        connection.end();
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Error interno en el servidor." });
-    }
-});
-
-// ==========================================
-// RUTA 4: NETFLIX - CÓDIGO DE INICIO (CORREGIDA)
-// ==========================================
-app.post('/buscar-codigo-netflix', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-
-    try {
-        const connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-
-        const searchCriteria = [
-            ['FROM', 'info@account.netflix.com'],
-            ['HEADER', 'SUBJECT', 'Netflix: Tu código de inicio de sesión'],
-            ['TO', email_usuario] 
-        ];
+        p.subtitle {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
         
-        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
-        const messages = await connection.search(searchCriteria, fetchOptions);
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            color: #cbd5e1;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+        select, input[type="email"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 14px 12px;
+            background-color: #334155; 
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: #f8fafc;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.2s;
+            appearance: none; 
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+        }
+        input[type="email"] { background-image: none; }
+        
+        select:focus, input[type="email"]:focus {
+            border-color: #3b82f6; 
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background-color 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+        button:hover {
+            background-color: #2563eb;
+        }
 
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+        .result-box {
+            margin-top: 25px;
+            padding: 20px;
+            background-color: #0f172a;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            min-height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+            word-break: break-all;
+        }
+        .result-text { font-size: 26px; font-weight: 600; letter-spacing: 2px; color: #10b981; }
+        .result-error { font-size: 14px; color: #ef4444; }
+        
+        .btn-enlace-final {
+            background-color: #10b981;
+            color: #000;
+            padding: 10px 15px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        .overlay.active { opacity: 1; pointer-events: auto; }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid #334155;
+            border-top-color: #3b82f6; border-radius: 50%; animation: girar 1s linear infinite; margin-bottom: 15px;
+        }
+        .overlay p { color: white; font-size: 15px; margin: 0; font-weight: 500; }
+        @keyframes girar { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loadingModal" class="overlay">
+        <div class="spinner"></div>
+        <p id="textoCarga">Procesando...</p>
+    </div>
+
+    <div class="panel">
+        <h2>Panel de Control</h2>
+        <p class="subtitle">Selecciona plataforma</p>
+        
+        <div class="form-group">
+            <label for="plataformaSelect">Plataforma</label>
+            <select id="plataformaSelect" onchange="actualizarOpciones()">
+                <option value="disney">Disney+</option>
+                <option value="netflix">Netflix</option>
+                <option value="vix">ViX</option>
+                <option value="max">Max / HBO</option>
+                <option value="prime">Prime Video</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="accionSelect">Acción requerida</label>
+            <select id="accionSelect">
+                </select>
+        </div>
+
+        <div class="form-group">
+            <label for="emailInput">Correo asignado</label>
+            <input type="email" id="emailInput" placeholder="Ej. juan+4@gmail.com" required>
+        </div>
+
+        <button onclick="ejecutarAccion()">Continuar</button>
+
+        <div class="result-box" id="cajaResultado">
+            <span style="color: #64748b; font-size: 14px;">El resultado aparecerá aquí</span>
+        </div>
+    </div>
+
+    <script>
+        // 1. DICCIONARIO DE OPCIONES (AHORA CON NETFLIX)
+        const opciones = {
+            'disney': [
+                { texto: 'Código de Acceso', valor: 'acceso_disney' },
+                { texto: 'Código de Hogar', valor: 'hogar_disney' }
+            ],
+            'netflix': [
+                { texto: 'Código de Inicio de sesión', valor: 'acceso_netflix' }
+            ],
+            'vix': [
+                { texto: 'Cambiar contraseña', valor: 'pass_vix' }
+            ],
+            'max': [
+                { texto: 'Próximamente...', valor: 'none' }
+            ],
+            'prime': [
+                { texto: 'Próximamente...', valor: 'none' }
+            ]
+        };
+
+        function actualizarOpciones() {
+            const plataforma = document.getElementById('plataformaSelect').value;
+            const selectAccion = document.getElementById('accionSelect');
+            selectAccion.innerHTML = '';
+            opciones[plataforma].forEach(opcion => {
+                const opt = document.createElement('option');
+                opt.value = opcion.valor;
+                opt.textContent = opcion.texto;
+                selectAccion.appendChild(opt);
+            });
+        }
+
+        actualizarOpciones();
+
+        // 2. ENRUTADOR DE ACCIONES
+        function ejecutarAccion() {
+            const accion = document.getElementById('accionSelect').value;
+            const cajaResultado = document.getElementById('cajaResultado');
+
+            if (accion === 'acceso_disney') {
+                realizarPeticion('/buscar-correo', 'Obteniendo Código Disney...');
+            } else if (accion === 'hogar_disney') {
+                realizarPeticion('/buscar-enlace-hogar', 'Buscando Código Hogar...');
+            } else if (accion === 'acceso_netflix') {
+                realizarPeticion('/buscar-codigo-netflix', 'Obteniendo Código Netflix...');
+            } else if (accion === 'pass_vix') {
+                realizarPeticion('/buscar-enlace-vix', 'Obteniendo Enlace de Vix...');
+            } else {
+                cajaResultado.innerHTML = `<span style="color: #64748b; font-size: 14px;">Plataforma en desarrollo.</span>`;
+            }
+        }
+
+        // 3. MOTOR DE BÚSQUEDA (INTACTO)
+        async function realizarPeticion(ruta, mensajeCarga) {
+            const email = document.getElementById('emailInput').value;
+            const cajaResultado = document.getElementById('cajaResultado');
+            const modal = document.getElementById('loadingModal');
+            const textoCarga = document.getElementById('textoCarga');
             
-            const regexCodigo = /\b\d(?:\s*\d){3}\b/g; 
-            const coincidencias = textoLimpio.match(regexCodigo);
+            if(!email) {
+                alert("Por favor ingresa un correo electrónico válido.");
+                return;
+            }
 
-            if (coincidencias) {
-                const codigosLimpios = coincidencias.map(num => num.replace(/\s+/g, ''));
+            textoCarga.innerText = mensajeCarga;
+            modal.classList.add('active');
+            cajaResultado.innerHTML = '<span style="color: #64748b; font-size: 14px;">Procesando...</span>';
+
+            try {
+                const baseUrlRailway = 'https://api-disney-bot-production.up.railway.app'; 
                 
-                if (codigosLimpios.length > 0) {
-                    // EL TRUCO: Solo tomamos el primer resultado del arreglo (codigosLimpios[0])
-                    // porque ese siempre es el código principal, ignorando los de abajo.
-                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0] });
+                const response = await fetch(baseUrlRailway + ruta, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email_usuario: email })
+                });
+
+                const data = await response.json();
+                modal.classList.remove('active');
+
+                if (data.success) {
+                    if(data.tipo === 'codigo') {
+                        cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
+                    } else if (data.tipo === 'enlace') {
+                        let textoBoton = ruta.includes('vix') ? 'Abrir enlace de Vix' : 'Abrir enlace';
+                        cajaResultado.innerHTML = `
+                            <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace encontrado!</span>
+                            <a href="${data.resultado}" target="_blank" class="btn-enlace-final">${textoBoton}</a>
+                        `;
+                    } else {
+                        cajaResultado.innerHTML = `<span class="result-error">${data.resultado}</span>`;
+                    }
                 } else {
-                    res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
+                    cajaResultado.innerHTML = `<span class="result-error">${data.mensaje || data.error}</span>`;
                 }
-            } else {
-                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 4 dígitos del código." });
+            } catch (error) {
+                modal.classList.remove('active');
+                cajaResultado.innerHTML = `<span class="result-error">Error de red. Verifica tu conexión a Railway.</span>`;
             }
-        } else {
-            res.json({ success: false, mensaje: `No se encontró un código de Netflix para: ${email_usuario}` });
         }
-        connection.end();
-    } catch (error) {
-        res.status(500).json({ success: false, error: "Error interno del servidor." });
-    }
-});
-
-function obtenerConfiguracion() {
-    return {
-        imap: {
-            user: process.env.EMAIL_USER,
-            password: process.env.EMAIL_PASS,
-            host: 'imap.gmail.com',
-            port: 993,
-            tls: true,
-            tlsOptions: { rejectUnauthorized: false },
-            authTimeout: 3000
-        }
-    };
-}
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
+    </script>
+</body>
+</html>
