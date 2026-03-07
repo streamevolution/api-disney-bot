@@ -26,10 +26,6 @@ app.post('/buscar-correo', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // NUEVO FILTRO SÚPER ESPECÍFICO
-        // 1. Remitente exacto
-        // 2. Asunto exacto (Ideal para agregar códigos de hogar después)
-        // 3. Dirigido al correo o alias (+3) que pongas en la página
         const searchCriteria = [
             ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
             ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'],
@@ -43,23 +39,28 @@ app.post('/buscar-correo', async (req, res) => {
             const ultimoMensaje = messages[messages.length - 1];
             const rawBody = ultimoMensaje.parts[0].body;
 
-            // ELIMINADOR DE DISEÑO (Solución al 707070)
-            // 1. Borra todas las etiquetas HTML (incluyendo colores como #707070)
-            let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ');
-            // 2. Borra basura de codificación como los =20
-            textoLimpio = textoLimpio.replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/g, ' ');
+            // Limpieza básica
+            let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/g, ' ');
 
-            // Ahora sí, buscamos los 6 dígitos reales en el texto limpio
-            const regexCodigo = /\b\d{6}\b/;
-            const coincidencia = textoLimpio.match(regexCodigo);
+            // EL TRUCO MAESTRO: Buscar TODOS los códigos de 6 dígitos con la letra "g" al final del regex
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
 
-            if (coincidencia) {
-                res.json({ success: true, codigo: coincidencia[0] });
+            if (coincidencias) {
+                // Filtramos los números que sabemos que son colores de diseño (707070)
+                const codigosReales = coincidencias.filter(numero => numero !== '707070' && numero !== '000000');
+
+                if (codigosReales.length > 0) {
+                    // Nos da el primer código real que encontró
+                    res.json({ success: true, codigo: codigosReales[0] });
+                } else {
+                    res.json({ success: true, codigo: "Solo se encontraron códigos de color, no el de acceso." });
+                }
             } else {
-                res.json({ success: true, codigo: "No se detectó el código en el texto. Revisa tu bandeja." });
+                res.json({ success: true, codigo: "No se detectaron 6 dígitos en el texto." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró el mensaje "Tu código de acceso único para Disney+" para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró un código reciente para: ${email_usuario}` });
         }
 
         connection.end();
