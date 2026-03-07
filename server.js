@@ -262,7 +262,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO (CORREGIDA PARA REENVÍOS)
+// RUTA 6: NU - VERIFICAR PAGO (INTACTA CON TU REPARACIÓN)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { nombre, monto, fecha } = req.body; 
@@ -272,7 +272,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // SOLUCIÓN: Se eliminó el ['FROM', 'noresponda@nu.com.mx'] para que atrape los reenviados.
         const searchCriteria = [
             ['HEADER', 'SUBJECT', 'transferencia']
         ];
@@ -291,12 +290,10 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
-                // NORMALIZAMOS LO QUE INGRESASTE
                 let nombreBuscado = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
                 let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
                 let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
 
-                // EXTRACCIÓN CON ESCÁNER QUIRÚRGICO DEL CORREO
                 const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
                 const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
                 const matchFecha = textoNormalizado.match(/FECHA:\s*([0-9A-Z\s]+?)(?=\s*HORA:|$)/);
@@ -308,7 +305,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let fechaCorreo = matchFecha ? matchFecha[1].trim() : "";
                 let horaCorreo = matchHora ? matchHora[1].trim() : "No detectada";
 
-                // VALIDACIÓN ESTRICTA (Sin margen de error)
                 let nombreEsExacto = (nombreCorreo === nombreBuscado);
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
@@ -336,6 +332,69 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    }
+});
+
+// ==========================================
+// RUTA 7: CRUNCHYROLL - ENLACE DE CONTRASEÑA (NUEVA FUNCIÓN)
+// ==========================================
+app.post('/buscar-pass-crunchyroll', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+
+    try {
+        const connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'hello@info.crunchyroll.com'],
+            ['HEADER', 'SUBJECT', 'Restablece'], 
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const rawBody = messages[messages.length - 1].parts[0].body;
+            
+            // Limpiamos el texto HTML
+            let bodyLimpio = rawBody.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+            
+            // Atrapamos todos los enlaces
+            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+
+            // Filtramos imágenes, logos y basura (asegurando que sea enlace de crunchyroll)
+            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                link.toLowerCase().includes('crunchyroll') && 
+                !link.toLowerCase().includes('.png') && 
+                !link.toLowerCase().includes('.jpg') && 
+                !link.toLowerCase().includes('.gif') && 
+                !link.toLowerCase().includes('logo') && 
+                !link.toLowerCase().includes('pixel') && 
+                !link.toLowerCase().includes('facebook') && 
+                !link.toLowerCase().includes('twitter') && 
+                !link.toLowerCase().includes('instagram') && 
+                !link.toLowerCase().includes('privacy') && 
+                !link.toLowerCase().includes('terms')
+            );
+
+            if (enlacesLimpios.length > 0) {
+                // TRUCO MAESTRO: Tomamos el enlace más largo (el token)
+                enlacesLimpios.sort((a, b) => b.length - a.length);
+                const enlaceReal = enlacesLimpios[0];
+
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se hallaron enlaces válidos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
+        }
+        connection.end();
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
     }
 });
 
