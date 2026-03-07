@@ -158,7 +158,7 @@ app.post('/buscar-enlace-vix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 4: NETFLIX - CÓDIGO DE INICIO (NUEVA)
+// RUTA 4: NETFLIX - CÓDIGO DE INICIO (CORREGIDA)
 // ==========================================
 app.post('/buscar-codigo-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -181,16 +181,16 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
             const rawBody = messages[messages.length - 1].parts[0].body;
             let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
             
-            // Netflix usa códigos de 4 dígitos. Esta regla atrapa el número incluso si tiene espacios en medio (ej. 6 3 6 8)
             const regexCodigo = /\b\d(?:\s*\d){3}\b/g; 
             const coincidencias = textoLimpio.match(regexCodigo);
 
             if (coincidencias) {
-                // Le quitamos los espacios en blanco que Netflix le haya puesto para que te lo muestre como "6368"
                 const codigosLimpios = coincidencias.map(num => num.replace(/\s+/g, ''));
                 
                 if (codigosLimpios.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosLimpios)].join('   |   ') });
+                    // EL TRUCO: Solo tomamos el primer resultado del arreglo (codigosLimpios[0])
+                    // porque ese siempre es el código principal, ignorando los de abajo.
+                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0] });
                 } else {
                     res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
                 }
