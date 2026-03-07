@@ -398,7 +398,7 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 8: HBO MAX - CÓDIGO DE UN SOLO USO (NUEVA)
+// RUTA 8: HBO MAX - CÓDIGO DE UN SOLO USO
 // ==========================================
 app.post('/buscar-codigo-hbo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -408,7 +408,6 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Búsqueda precisa por remitente y palabras clave del asunto
         const searchCriteria = [
             ['FROM', 'no-reply@alerts.hbomax.com'],
             ['HEADER', 'SUBJECT', 'HBO Max'],
@@ -422,7 +421,6 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
             const rawBody = messages[messages.length - 1].parts[0].body;
             let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
             
-            // HBO manda un código numérico de 6 dígitos
             const regexCodigo = /\b\d{6}\b/g; 
             const coincidencias = textoLimpio.match(regexCodigo);
 
@@ -442,6 +440,78 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
         connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    }
+});
+
+// ==========================================
+// RUTA 9: HBO MAX - ENLACE DE CONTRASEÑA (NUEVA)
+// ==========================================
+app.post('/buscar-pass-hbo', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+
+    try {
+        const connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        // Busca la parte estática del título (sin importar la hora)
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.hbomax.com'],
+            ['HEADER', 'SUBJECT', 'restablecer tu contraseña'], 
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const rawBody = messages[messages.length - 1].parts[0].body;
+            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
+            
+            const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+            
+            let enlaceReal = null;
+            let match;
+
+            // Busca el botón que dice "RESTABLECER CONTRASEÑA"
+            while ((match = regexTagA.exec(bodyLimpio)) !== null) {
+                let url = match[1];
+                let textoInterno = match[2].toUpperCase().replace(/<[^>]+>/g, '');
+
+                if (textoInterno.includes('RESTABLECER')) {
+                    enlaceReal = url;
+                    break;
+                }
+            }
+
+            // Respaldo de seguridad: Toma el enlace más largo (ignora basuras)
+            if (!enlaceReal) {
+                const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+                const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+                const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                    !link.toLowerCase().includes('.png') && 
+                    !link.toLowerCase().includes('.jpg') && 
+                    !link.toLowerCase().includes('.gif') && 
+                    !link.toLowerCase().includes('help')
+                );
+                
+                if (enlacesLimpios.length > 0) {
+                    enlacesLimpios.sort((a, b) => b.length - a.length);
+                    enlaceReal = enlacesLimpios[0];
+                }
+            }
+
+            if (enlaceReal) {
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el botón de restablecer." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de HBO Max para: ${email_usuario}` });
+        }
+        connection.end();
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
     }
 });
 
