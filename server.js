@@ -336,7 +336,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 7: CRUNCHYROLL - EXACTAMENTE LO QUE PEDISTE
+// RUTA 7: CRUNCHYROLL - ENLACE 
 // ==========================================
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -359,7 +359,6 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
             const rawBody = messages[messages.length - 1].parts[0].body;
             let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
             
-            // Busca la etiqueta de enlace que tenga exactamente el texto "haz clic"
             const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
             
             let enlaceReal = null;
@@ -367,16 +366,14 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
 
             while ((match = regexTagA.exec(bodyLimpio)) !== null) {
                 let url = match[1];
-                let textoInterno = match[2].toLowerCase().replace(/<[^>]+>/g, ''); // limpia etiquetas basura
+                let textoInterno = match[2].toLowerCase().replace(/<[^>]+>/g, '');
 
-                // Si el enlace está envolviendo las palabras "haz clic", ESE ES EL BUENO.
                 if (textoInterno.includes('haz clic') || textoInterno.includes('click')) {
                     enlaceReal = url;
                     break;
                 }
             }
 
-            // Respaldo por si falla el texto: Busca el token gigante y agarra el más largo
             if (!enlaceReal) {
                 const regexUPN = /https?:\/\/links\.mail\.crunchyroll\.com\/ls\/click\?upn=[^\s"'><]+/gi;
                 const enlacesUPN = bodyLimpio.match(regexUPN) || [];
@@ -397,6 +394,54 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
         connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    }
+});
+
+// ==========================================
+// RUTA 8: HBO MAX - CÓDIGO DE UN SOLO USO (NUEVA)
+// ==========================================
+app.post('/buscar-codigo-hbo', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+
+    try {
+        const connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        // Búsqueda precisa por remitente y palabras clave del asunto
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.hbomax.com'],
+            ['HEADER', 'SUBJECT', 'HBO Max'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const rawBody = messages[messages.length - 1].parts[0].body;
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            
+            // HBO manda un código numérico de 6 dígitos
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosReales.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   ') });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores hexadecimales." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos del código." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de HBO Max para: ${email_usuario}` });
+        }
+        connection.end();
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
     }
 });
 
