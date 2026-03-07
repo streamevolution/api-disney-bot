@@ -177,8 +177,8 @@
                     <input type="text" id="nuMonto" placeholder="Ej. 200.00">
                 </div>
                 <div class="form-group" style="flex: 1;">
-                    <label>Hora</label>
-                    <input type="text" id="nuHora" placeholder="Ej. 20:19">
+                    <label>Fecha</label>
+                    <input type="text" id="nuFecha" placeholder="Ej. 05 MAR 2026">
                 </div>
             </div>
         </div>
@@ -208,7 +208,6 @@
             ]
         };
 
-        // Cambia la vista del formulario si se elige Nu
         function actualizarOpciones() {
             const plataforma = document.getElementById('plataformaSelect').value;
             const selectAccion = document.getElementById('accionSelect');
@@ -239,15 +238,14 @@
             
             let payload = {};
 
-            // Construimos la petición según el formulario activo
             if (plataforma === 'nu') {
                 payload = {
                     nombre: document.getElementById('nuNombre').value,
                     monto: document.getElementById('nuMonto').value,
-                    hora: document.getElementById('nuHora').value
+                    fecha: document.getElementById('nuFecha').value // AHORA ENVIAMOS FECHA
                 };
-                if(!payload.nombre || !payload.monto || !payload.hora) {
-                    alert("Por favor llena Nombre, Monto y Hora de la transferencia."); return;
+                if(!payload.nombre || !payload.monto || !payload.fecha) {
+                    alert("Por favor llena Nombre, Monto y Fecha de la transferencia."); return;
                 }
             } else {
                 payload = { email_usuario: document.getElementById('emailInput').value };
@@ -308,7 +306,7 @@
                             <a href="${data.resultado}" target="_blank" class="btn-enlace-final">${textoBoton}</a>
                         `;
                     } else if (data.tipo === 'pago') {
-                        // TARJETA DE VALIDACIÓN PARA NU
+                        // TARJETA DE VALIDACIÓN (DIBUJADA EXACTAMENTE COMO LA PEDISTE)
                         cajaResultado.innerHTML = `
                             <span class="result-text" style="font-size: 24px; margin-bottom: 12px; display: inline-block;">✅ ${data.resultado}</span>
                             <div style="text-align: left; background: #334155; padding: 15px; border-radius: 8px; width: 100%; box-sizing: border-box;">
