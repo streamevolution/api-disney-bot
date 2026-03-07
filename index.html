@@ -6,9 +6,9 @@
     <title>Panel de Control</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* BASE FLAT DESIGN */
+        /* BASE FLAT DESIGN - Diseño Plano Profesional (INTACTO) */
         body {
-            background-color: #0f172a; /* Fondo oscuro sólido y elegante */
+            background-color: #0f172a; 
             color: #f8fafc;
             font-family: 'Inter', sans-serif;
             display: flex;
@@ -18,7 +18,7 @@
             margin: 0;
         }
         .panel {
-            background-color: #1e293b; /* Tarjeta sólida sin degradados */
+            background-color: #1e293b; 
             padding: 40px 30px;
             border-radius: 12px;
             width: 100%;
@@ -40,7 +40,6 @@
             text-align: center;
         }
         
-        /* FORMULARIOS Y LISTAS DESPLEGABLES */
         .form-group {
             margin-bottom: 15px;
             text-align: left;
@@ -64,20 +63,18 @@
             font-family: 'Inter', sans-serif;
             outline: none;
             transition: border-color 0.2s;
-            appearance: none; /* Estilo plano puro */
+            appearance: none; 
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
             background-repeat: no-repeat;
             background-position: right 12px center;
             background-size: 16px;
         }
-        /* El input email no ocupa la flecha del select */
         input[type="email"] { background-image: none; }
         
         select:focus, input[type="email"]:focus {
             border-color: #3b82f6; 
         }
         
-        /* BOTÓN PLANO */
         button {
             width: 100%;
             padding: 14px;
@@ -96,7 +93,7 @@
             background-color: #2563eb;
         }
 
-        /* CAJA DE RESULTADO (COPIADA DE TU ARCHIVO) */
+        /* CAJA DE RESULTADO (INTACTA) */
         .result-box {
             margin-top: 25px;
             padding: 20px;
@@ -113,6 +110,8 @@
         }
         .result-text { font-size: 26px; font-weight: 600; letter-spacing: 2px; color: #10b981; }
         .result-error { font-size: 14px; color: #ef4444; }
+        
+        /* BOTÓN VERDE FINAL (El que usaremos para Vix) */
         .btn-enlace-final {
             background-color: #10b981;
             color: #000;
@@ -124,7 +123,7 @@
             display: inline-block;
         }
 
-        /* OVERLAY SPINNER (COPIADO DE TU ARCHIVO) */
+        /* OVERLAY SPINNER (INTACTO) */
         .overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 23, 42, 0.85);
@@ -169,7 +168,7 @@
 
         <div class="form-group">
             <label for="emailInput">Correo asignado</label>
-            <input type="email" id="emailInput" placeholder="Ej. juan+3@gmail.com" required>
+            <input type="email" id="emailInput" placeholder="Ej. juan+4@gmail.com" required>
         </div>
 
         <button onclick="ejecutarAccion()">Continuar</button>
@@ -180,7 +179,7 @@
     </div>
 
     <script>
-        // 1. DICCIONARIO DE OPCIONES PARA LA LISTA 2
+        // 1. DICCIONARIO DE OPCIONES (INTACTO)
         const opciones = {
             'disney': [
                 { texto: 'Código de Acceso', valor: 'acceso_disney' },
@@ -197,15 +196,10 @@
             ]
         };
 
-        // 2. FUNCIÓN PARA ACTUALIZAR LA LISTA 2 CUANDO CAMBIAS DE PLATAFORMA
         function actualizarOpciones() {
             const plataforma = document.getElementById('plataformaSelect').value;
             const selectAccion = document.getElementById('accionSelect');
-            
-            // Limpiar la lista 2
             selectAccion.innerHTML = '';
-
-            // Rellenar la lista 2 según la plataforma elegida
             opciones[plataforma].forEach(opcion => {
                 const opt = document.createElement('option');
                 opt.value = opcion.valor;
@@ -214,31 +208,31 @@
             });
         }
 
-        // Ejecutar una vez al cargar la página para que Disney tenga sus opciones por defecto
         actualizarOpciones();
 
-        // 3. ENRUTADOR DE ACCIONES AL DAR CLIC EN "CONTINUAR"
+        // ======================================================================
+        // 2. ENRUTADOR DE ACCIONES (ACTUALIZADO PARA VIX)
+        // ======================================================================
         function ejecutarAccion() {
             const accion = document.getElementById('accionSelect').value;
             const cajaResultado = document.getElementById('cajaResultado');
 
             if (accion === 'acceso_disney') {
-                // Llama a tu función original para Acceso
-                realizarPeticion('/buscar-correo', 'Obteniendo Código de Acceso...');
+                // Llama a la función original de Disney Acceso
+                realizarPeticion('/buscar-correo', 'Obteniendo Código Disney...');
             } else if (accion === 'hogar_disney') {
-                // Llama a tu función original para Hogar
-                realizarPeticion('/buscar-enlace-hogar', 'Buscando Código de Hogar...');
+                // Llama a la función original de Disney Hogar
+                realizarPeticion('/buscar-enlace-hogar', 'Buscando Código Hogar...');
             } else if (accion === 'pass_vix') {
-                // Mensaje visual sin función de backend para Vix
-                cajaResultado.innerHTML = `<span style="color: #3b82f6; font-size: 14px; font-weight: 500;">Función "Cambiar contraseña" en desarrollo.</span>`;
+                // NUEVO: Llama a la nueva función real para Vix
+                realizarPeticion('/buscar-enlace-vix', 'Obteniendo Enlace de Vix...');
             } else {
-                // Mensaje visual para Max y Prime
                 cajaResultado.innerHTML = `<span style="color: #64748b; font-size: 14px;">Plataforma en desarrollo.</span>`;
             }
         }
 
         // ======================================================================
-        // 4. TU FUNCIÓN ORIGINAL INTACTA (Extraída de tu index - Copiar.html)
+        // 3. TU FUNCIÓN ORIGINAL INTACTA (Motor de búsqueda)
         // ======================================================================
         async function realizarPeticion(ruta, mensajeCarga) {
             const email = document.getElementById('emailInput').value;
@@ -273,10 +267,10 @@
                     if(data.tipo === 'codigo') {
                         cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
                     } else if (data.tipo === 'enlace') {
-                        // Si es un enlace, creamos un botón verde interactivo para darle clic
+                        // AHORA VIX TAMBIÉN USARÁ ESTE BOTÓN VERDE
                         cajaResultado.innerHTML = `
-                            <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace de Hogar encontrado!</span>
-                            <a href="${data.resultado}" target="_blank" class="btn-enlace-final">Abrir enlace de Disney</a>
+                            <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace de Vix encontrado!</span>
+                            <a href="${data.resultado}" target="_blank" class="btn-enlace-final">Abrir enlace de Vix</a>
                         `;
                     } else {
                         cajaResultado.innerHTML = `<span class="result-error">${data.resultado}</span>`;
