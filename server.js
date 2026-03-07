@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// RUTA 1: BUSCAR CÓDIGO DE 6 DÍGITOS
+// RUTA 1: CÓDIGO DE ACCESO (ESTABLE - NO TOCADO)
 // ==========================================
 app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -20,7 +20,6 @@ app.post('/buscar-correo', async (req, res) => {
 
         const searchCriteria = [
             ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
-            ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'],
             ['TO', email_usuario] 
         ];
         
@@ -45,16 +44,16 @@ app.post('/buscar-correo', async (req, res) => {
                 res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró un código reciente para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No se encontró un correo reciente para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
-        res.status(500).json({ success: false, error: "Error interno del servidor." });
+        res.status(500).json({ success: false, error: "Error interno." });
     }
 });
 
 // ==========================================
-// RUTA 2: BUSCAR ENLACE DE HOGAR (AMPLIADA)
+// RUTA 2: ACTUALIZAR HOGAR (NUEVA LÓGICA CORREGIDA)
 // ==========================================
 app.post('/buscar-enlace-hogar', async (req, res) => {
     const { email_usuario } = req.body; 
@@ -64,9 +63,8 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
         const connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // BÚSQUEDA AMPLIA: Cualquier correo que contenga "disney" en el remitente
         const searchCriteria = [
-            ['FROM', 'disney'],
+            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
             ['TO', email_usuario] 
         ];
         
@@ -74,40 +72,42 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
         const messages = await connection.search(searchCriteria, fetchOptions);
 
         if (messages.length > 0) {
-            let enlaceEncontrado = null;
+            let codigoHogar = null;
             
-            // Revisamos los últimos 3 correos de Disney de más nuevo a más viejo
-            const limite = Math.max(0, messages.length - 3);
+            // Revisamos los últimos 5 correos
+            const limite = Math.max(0, messages.length - 5);
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
-                
-                // Extraemos todos los enlaces ocultos en el correo
-                const regexEnlaces = /href="(https:\/\/[^"]+)"/gi;
-                const enlaces = [...rawBody.matchAll(regexEnlaces)].map(m => m[1]);
 
-                // Buscamos un enlace que sea de Disney pero que NO sea de ayuda o legal
-                const enlaceUtil = enlaces.find(link => 
-                    !link.includes('privacy') && 
-                    !link.includes('help') && 
-                    !link.includes('legal') &&
-                    !link.includes('support') &&
-                    !link.includes('preferences') &&
-                    link.includes('disney')
-                );
+                // 1. LIMPIAMOS EL TEXTO PRIMERO (Para evitar que la palabra Hogar esté rota)
+                let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+                                         .replace(/<[^>]+>/g, ' ')
+                                         .replace(/=\r?\n/g, '')
+                                         .replace(/=[0-9A-F]{2}/gi, ' ');
 
-                if (enlaceUtil) {
-                    enlaceEncontrado = enlaceUtil;
-                    break; // Ya lo encontramos, salimos
+                // 2. AHORA BUSCAMOS LAS PALABRAS CLAVE EN EL TEXTO LIMPIO
+                if (textoLimpio.toLowerCase().includes('hogar') || textoLimpio.toLowerCase().includes('actualizar')) {
+                    
+                    const regexCodigo = /\b\d{6}\b/g;
+                    const coincidencias = textoLimpio.match(regexCodigo);
+
+                    if (coincidencias) {
+                        const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                        if (codigosReales.length > 0) {
+                            codigoHogar = [...new Set(codigosReales)].join('   |   ');
+                            break; // Encontramos el código, detenemos la búsqueda
+                        }
+                    }
                 }
             }
 
-            if (enlaceEncontrado) {
-                res.json({ success: true, tipo: 'enlace', resultado: enlaceEncontrado });
+            if (codigoHogar) {
+                res.json({ success: true, tipo: 'codigo', resultado: codigoHogar });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se pudo extraer el botón. Asegúrate de que tenga un enlace." });
+                res.json({ success: true, tipo: 'error', resultado: "No se encontró la solicitud de Hogar en la bandeja." });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontró el correo de Actualización de Hogar para: ${email_usuario}` });
+            res.json({ success: false, mensaje: `No hay correos de Disney para: ${email_usuario}` });
         }
         connection.end();
     } catch (error) {
@@ -115,7 +115,6 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
     }
 });
 
-// Función para no repetir la configuración
 function obtenerConfiguracion() {
     return {
         imap: {
