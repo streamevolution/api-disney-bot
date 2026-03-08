@@ -52,7 +52,6 @@
             font-weight: 500;
         }
         
-        /* Agregamos color-scheme: dark para que el calendario se vea elegante y oscuro */
         select, input {
             width: 100%;
             box-sizing: border-box;
@@ -154,6 +153,8 @@
                 <option value="disney">Disney+</option>
                 <option value="netflix">Netflix</option>
                 <option value="vix">ViX</option>
+                <option value="hbo">HBO Max</option>
+                <option value="crunchyroll">Crunchyroll</option>
                 <option value="nu">Nu (Verificar Pago)</option>
             </select>
         </div>
@@ -206,6 +207,13 @@
             'vix': [
                 { texto: 'Cambiar contraseña', valor: 'pass_vix' }
             ],
+            'hbo': [
+                { texto: 'Código de un solo uso', valor: 'acceso_hbo' },
+                { texto: 'Cambiar contraseña', valor: 'pass_hbo' } 
+            ],
+            'crunchyroll': [
+                { texto: 'Cambiar contraseña', valor: 'pass_crunchyroll' }
+            ],
             'nu': [
                 { texto: 'Verificar transferencia', valor: 'verificar_nu' }
             ]
@@ -234,11 +242,8 @@
 
         actualizarOpciones();
 
-        // ¡NUEVA FUNCIÓN! Traductor del Calendario al formato estricto de Nu
         function convertirFechaNu(fechaCalendario) {
             if (!fechaCalendario) return "";
-            
-            // El calendario arroja "YYYY-MM-DD"
             const partes = fechaCalendario.split('-');
             const anio = partes[0];
             const mesNum = partes[1];
@@ -250,7 +255,6 @@
                 '09': 'SEP', '10': 'OCT', '11': 'NOV', '12': 'DIC'
             };
 
-            // Devuelve algo como "05 MAR 2026"
             return `${dia} ${mesesEspanol[mesNum]} ${anio}`;
         }
 
@@ -262,7 +266,6 @@
             let payload = {};
 
             if (plataforma === 'nu') {
-                // Obtenemos el valor del calendario y lo traducimos
                 const fechaCruda = document.getElementById('nuFecha').value;
                 const fechaTraducida = convertirFechaNu(fechaCruda);
 
@@ -273,7 +276,7 @@
                 };
 
                 if(!payload.nombre || !payload.monto || !fechaCruda) {
-                    alert("Por favor llena Nombre, Monto y selecciona la Fecha en el calendario."); return;
+                    alert("Por favor llena Nombre, Monto y selecciona la Fecha."); return;
                 }
             } else {
                 payload = { email_usuario: document.getElementById('emailInput').value };
@@ -292,6 +295,12 @@
                 realizarPeticion('/buscar-pass-netflix', 'Obteniendo Enlace de Netflix...', payload);
             } else if (accion === 'pass_vix') {
                 realizarPeticion('/buscar-enlace-vix', 'Obteniendo Enlace de Vix...', payload);
+            } else if (accion === 'acceso_hbo') {
+                realizarPeticion('/buscar-codigo-hbo', 'Obteniendo Código HBO Max...', payload);
+            } else if (accion === 'pass_hbo') {
+                realizarPeticion('/buscar-pass-hbo', 'Obteniendo Enlace de HBO Max...', payload);
+            } else if (accion === 'pass_crunchyroll') {
+                realizarPeticion('/buscar-pass-crunchyroll', 'Obteniendo Enlace de Crunchyroll...', payload);
             } else if (accion === 'verificar_nu') {
                 realizarPeticion('/buscar-pago-nu', 'Verificando en cuenta Nu...', payload);
             } else {
@@ -322,16 +331,22 @@
 
                 if (data.success) {
                     if(data.tipo === 'codigo') {
-                        cajaResultado.innerHTML = `<span class="result-text">${data.resultado}</span>`;
+                        cajaResultado.innerHTML = `
+                            <span class="result-text">${data.resultado}</span>
+                            <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 13px; font-weight: 500;">Recibido: ${data.fecha || 'Fecha no disponible'}</p>
+                        `;
                     } else if (data.tipo === 'enlace') {
                         let textoBoton = 'Abrir enlace';
                         if (ruta.includes('vix')) textoBoton = 'Abrir enlace de ViX';
                         if (ruta.includes('netflix')) textoBoton = 'Abrir enlace de Netflix';
+                        if (ruta.includes('crunchyroll')) textoBoton = 'Abrir enlace de Crunchyroll';
                         if (ruta.includes('hogar')) textoBoton = 'Abrir enlace de Disney';
+                        if (ruta.includes('hbo')) textoBoton = 'Abrir enlace de HBO Max';
 
                         cajaResultado.innerHTML = `
                             <span style="color: white; font-size: 14px; margin-bottom: 5px;">¡Enlace encontrado!</span>
                             <a href="${data.resultado}" target="_blank" class="btn-enlace-final">${textoBoton}</a>
+                            <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 13px; font-weight: 500;">Recibido: ${data.fecha || 'Fecha no disponible'}</p>
                         `;
                     } else if (data.tipo === 'pago') {
                         cajaResultado.innerHTML = `
