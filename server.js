@@ -447,7 +447,7 @@ async function iniciarBotWhatsApp() {
         // COMANDO DE LIMPIEZA: !borrarbasura
         if (comandoBruto === '!borrarbasura') {
             if (!isAdmin) return; 
-            const carpetaVieja = '/data/sesion_bot_whatsapp2';
+            const carpetaVieja = '/data/sesion_bot_whatsapp';
             if (fs.existsSync(carpetaVieja)) {
                 fs.rmSync(carpetaVieja, { recursive: true, force: true });
                 return await sock.sendMessage(jid, { text: "🧹 *BASURA ELIMINADA*\nLa sesión vieja y corrupta ha sido borrada de tu disco duro." });
