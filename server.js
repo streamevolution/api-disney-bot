@@ -391,10 +391,10 @@ async function iniciarBotWhatsApp() {
         const comandoBruto = textoOriginal.trim().split(/\s+/)[0].toLowerCase();
         const jid = msg.key.remoteJid; 
 
-               // =======================================================
+                       // =======================================================
         // TU NÚMERO DE ADMINISTRADOR
         // =======================================================
-        const ADMIN_NUMBER = "7719624236"; 
+        const ADMIN_NUMBER = "243563988291766"; 
         const isAdmin = jid.includes(ADMIN_NUMBER);
 
         // COMANDO ESPÍA (Para saber cómo te lee WhatsApp)
