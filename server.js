@@ -391,11 +391,16 @@ async function iniciarBotWhatsApp() {
         const comandoBruto = textoOriginal.trim().split(/\s+/)[0].toLowerCase();
         const jid = msg.key.remoteJid; 
 
-        // =======================================================
+               // =======================================================
         // TU NÚMERO DE ADMINISTRADOR
         // =======================================================
         const ADMIN_NUMBER = "7719624236"; 
         const isAdmin = jid.includes(ADMIN_NUMBER);
+
+        // COMANDO ESPÍA (Para saber cómo te lee WhatsApp)
+        if (comandoBruto === '!miid') {
+            return await sock.sendMessage(jid, { text: `🤖 Hola, WhatsApp me dice que tu número interno exacto es:\n*${jid}*` });
+        }
 
         // --- MINI BASE DE DATOS ---
         const dbFile = '/data/usuarios.json';
