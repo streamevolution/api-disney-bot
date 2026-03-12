@@ -407,7 +407,7 @@ async function iniciarBotWhatsApp() {
         if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify({}));
         let db = JSON.parse(fs.readFileSync(dbFile));
 
-        // ==========================================
+                // ==========================================
         // COMANDOS DE ADMINISTRADOR
         // ==========================================
         
@@ -417,13 +417,13 @@ async function iniciarBotWhatsApp() {
             
             const partes = textoOriginal.trim().split('/'); 
             if (partes.length === 3) {
-                const numNuevo = partes[1] + '@s.whatsapp.net';
+                const numNuevo = partes[1]; // <-- ¡AQUÍ ESTÁ EL CAMBIO! Ya no pegamos terminaciones
                 const dias = parseInt(partes[2]);
                 const vencimiento = new Date();
                 vencimiento.setDate(vencimiento.getDate() + dias);
                 db[numNuevo] = vencimiento.toISOString();
                 fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
-                return await sock.sendMessage(jid, { text: `✅ *CLIENTE REGISTRADO*\n📱 Número: ${partes[1]}\n⏳ Días: ${dias}\n📅 Vence el: ${vencimiento.toLocaleDateString('es-MX')}` });
+                return await sock.sendMessage(jid, { text: `✅ *CLIENTE REGISTRADO*\n📱 ID: ${partes[1]}\n⏳ Días: ${dias}\n📅 Vence el: ${vencimiento.toLocaleDateString('es-MX')}` });
             } else {
                 return await sock.sendMessage(jid, { text: "⚠️ Formato incorrecto. Usa: !agregar/numero/dias" });
             }
@@ -434,10 +434,16 @@ async function iniciarBotWhatsApp() {
             if (!isAdmin) return;
             const partes = textoOriginal.trim().split('/');
             if (partes.length === 2) {
-                const numQuitar = partes[1] + '@s.whatsapp.net';
-                delete db[numQuitar];
-                fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
-                return await sock.sendMessage(jid, { text: `🗑️ *CLIENTE ELIMINADO*\nEl número ${partes[1]} ya no tiene acceso.` });
+                const numQuitar = partes[1]; // <-- CAMBIO AQUÍ TAMBIÉN
+                if (db[numQuitar]) {
+                    delete db[numQuitar];
+                    fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
+                    return await sock.sendMessage(jid, { text: `🗑️ *CLIENTE ELIMINADO*\nEl ID ${partes[1]} ya no tiene acceso.` });
+                } else {
+                    return await sock.sendMessage(jid, { text: `⚠️ El cliente ${partes[1]} no existe en tu base de datos.` });
+                }
+            } else {
+                return await sock.sendMessage(jid, { text: "⚠️ Formato incorrecto. Usa: !quitar/numero" });
             }
         }
 
@@ -455,9 +461,9 @@ async function iniciarBotWhatsApp() {
             const carpetaVieja = '/data/sesion_limpia_01';
             if (fs.existsSync(carpetaVieja)) {
                 fs.rmSync(carpetaVieja, { recursive: true, force: true });
-                return await sock.sendMessage(jid, { text: "🧹 *BASURA ELIMINADA*\nLa sesión vieja y corrupta ha sido borrada de tu disco duro." });
+                return await sock.sendMessage(jid, { text: "🧹 *BASURA ELIMINADA*\nLa sesión vieja ha sido borrada." });
             } else {
-                return await sock.sendMessage(jid, { text: "👍 *TODO LIMPIO*\nNo se encontró ninguna sesión vieja que borrar." });
+                return await sock.sendMessage(jid, { text: "👍 *TODO LIMPIO*\nNo se encontró ninguna sesión vieja." });
             }
         }
 
@@ -465,7 +471,8 @@ async function iniciarBotWhatsApp() {
         // VERIFICADOR DE ACCESO (Para los clientes)
         // ==========================================
         if (comandoBruto.startsWith('!') && !isAdmin) {
-            const fechaVencimiento = db[jid] ? new Date(db[jid]) : null;
+            const numeroCliente = jid.split('@')[0]; // <-- EXTRAE SOLO LOS NÚMEROS
+            const fechaVencimiento = db[numeroCliente] ? new Date(db[numeroCliente]) : null;
             const ahora = new Date();
 
             if (!fechaVencimiento) {
@@ -474,6 +481,7 @@ async function iniciarBotWhatsApp() {
                 return await sock.sendMessage(jid, { text: "❌ *MEMBRESÍA VENCIDA*\nTu tiempo de acceso ha caducado. Por favor, renueva tu suscripción." });
             }
         }
+
 
         // ==========================================
         // COMANDOS DEL BOT
