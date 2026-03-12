@@ -330,7 +330,7 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 
 async function iniciarBotWhatsApp() {
     // Usamos una nueva carpeta para asegurar que no intente leer el QR roto del pasado
-    const { state, saveCreds } = await useMultiFileAuthState('sesion_bot_whatsapp');
+    const { state, saveCreds } = await useMultiFileAuthState('/data/sesion_bot_whatsapp');
     
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`📡 Usando WhatsApp v${version.join('.')}`);
@@ -399,12 +399,12 @@ async function iniciarBotWhatsApp() {
         // TU NÚMERO DE ADMINISTRADOR (El único que puede dar acceso)
         // Escríbelo con tu código de país. Ej: "525664140028"
         // =======================================================
-        const ADMIN_NUMBER = "525664140028@s.whatsapp.net"; 
+        const ADMIN_NUMBER = "527719624236@s.whatsapp.net"; 
         const isAdmin = (jid === ADMIN_NUMBER);
 
         // --- MINI BASE DE DATOS (Manejada por Node.js FileSystem) ---
         const fs = require('fs');
-        const dbFile = './usuarios.json';
+        const dbFile = '/data/usuarios.json';
         if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify({}));
         let db = JSON.parse(fs.readFileSync(dbFile));
 
