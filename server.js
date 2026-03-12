@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const imaps = require('imap-simple');
 const cors = require('cors');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+// Agregamos fetchLatestBaileysVersion a la importación
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 
 const app = express();
@@ -42,7 +43,7 @@ function obtenerConfiguracion() {
 }
 
 // ==========================================
-// RUTAS WEB (HTML) - EXACTAMENTE COMO LAS TENÍAS
+// RUTAS WEB (HTML)
 // ==========================================
 
 app.post('/buscar-correo', async (req, res) => {
@@ -325,19 +326,24 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
     } finally { if (connection) connection.end(); }
 });
 
-
 // ==========================================
-// EL BOT DE WHATSAPP (LIGERO Y CONECTADO)
+// EL BOT DE WHATSAPP (A PRUEBA DE FALLOS)
 // ==========================================
 
 async function iniciarBotWhatsApp() {
-    // Guarda la sesión para que no te pida QR a cada rato
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     
+    // TRUCO: Buscamos la versión más reciente de WhatsApp primero
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`📡 Usando WhatsApp v${version.join('.')}, isLatest: ${isLatest}`);
+
     const sock = makeWASocket({
+        version, // Le pasamos la versión correcta para que Meta no nos bote
         auth: state,
-        printQRInTerminal: true, // Esto imprime el QR en los Logs de Railway
-        browser: ['Panel Admin', 'Chrome', '1.0.0']
+        printQRInTerminal: true,
+        browser: ['Panel Admin', 'Chrome', '1.0.0'],
+        syncFullHistory: false, // Fundamental para no llenar la RAM de Railway
+        connectTimeoutMs: 60000 // Le damos más tiempo de conexión
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -346,7 +352,6 @@ async function iniciarBotWhatsApp() {
         const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
-            // Imprime un código QR pequeñito en la consola para escanearlo fácil
             qrcode.generate(qr, { small: true });
             console.log('\n======================================================');
             console.log('¡ESCENEA ESTE QR EN TU WHATSAPP PARA CONECTAR EL BOT!');
@@ -355,7 +360,7 @@ async function iniciarBotWhatsApp() {
 
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Conexión cerrada. Reconectando...', shouldReconnect);
+            console.log('⚠️ Conexión cerrada. Reconectando...', shouldReconnect);
             if (shouldReconnect) {
                 iniciarBotWhatsApp();
             }
@@ -366,18 +371,15 @@ async function iniciarBotWhatsApp() {
 
     sock.ev.on('messages.upsert', async m => {
         const msg = m.messages[0];
-        // Ignorar si el mensaje lo enviaste tú mismo desde otro dispositivo, o si no hay texto
         if (!msg.message || msg.key.fromMe) return;
 
         const texto = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
         const comando = texto.toLowerCase().trim();
-        const jid = msg.key.remoteJid; // El número de WhatsApp que te escribió
+        const jid = msg.key.remoteJid; 
 
-        // TRUCO MAESTRO: Hacer una petición interna a tu propio servidor local
         async function buscarYResponder(ruta, plataforma, email) {
             await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para: ${email}...` });
             try {
-                // Hacemos un fetch local. ¡Cero consumo extra de procesador!
                 const response = await fetch(`http://127.0.0.1:${PORT}${ruta}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -396,13 +398,11 @@ async function iniciarBotWhatsApp() {
                     await sock.sendMessage(jid, { text: `❌ *No encontrado:* ${data.mensaje || data.error}` });
                 }
             } catch (error) {
-                await sock.sendMessage(jid, { text: `❌ Error de red interno intentando buscar.` });
+                await sock.sendMessage(jid, { text: `❌ Error interno conectando con el panel.` });
             }
         }
 
-        // ==========================================
         // COMANDOS DEL BOT
-        // ==========================================
         if (comando.startsWith('!netflix ')) {
             const email = comando.split(' ')[1];
             if(email) await buscarYResponder('/buscar-codigo-netflix', 'Netflix', email);
@@ -415,12 +415,10 @@ async function iniciarBotWhatsApp() {
             const email = comando.split(' ')[1];
             if(email) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', email);
         }
-        // Puedes agregar más comandos copiando la estructura de arriba (ej. !vix, !max)
     });
 }
 
-// Iniciar servidor y bot al mismo tiempo
 app.listen(PORT, () => { 
-    console.log(`Servidor web corriendo en el puerto ${PORT}`); 
-    iniciarBotWhatsApp(); // Encendemos el bot en cuanto el servidor está listo
+    console.log(`🚀 Servidor web corriendo en el puerto ${PORT}`); 
+    iniciarBotWhatsApp(); 
 });
