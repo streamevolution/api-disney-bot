@@ -385,16 +385,91 @@ async function iniciarBotWhatsApp() {
         }
     });
 
-    sock.ev.on('messages.upsert', async m => {
+        sock.ev.on('messages.upsert', async m => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const texto = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const comando = texto.toLowerCase().trim();
+        const textoOriginal = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        if (!textoOriginal) return;
+
+        const comandoBruto = textoOriginal.trim().split(/\s+/)[0].toLowerCase();
         const jid = msg.key.remoteJid; 
 
+        // =======================================================
+        // TU NÚMERO DE ADMINISTRADOR (El único que puede dar acceso)
+        // Escríbelo con tu código de país. Ej: "525664140028"
+        // =======================================================
+        const ADMIN_NUMBER = "525664140028@s.whatsapp.net"; 
+        const isAdmin = (jid === ADMIN_NUMBER);
+
+        // --- MINI BASE DE DATOS (Manejada por Node.js FileSystem) ---
+        const fs = require('fs');
+        const dbFile = './usuarios.json';
+        if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify({}));
+        let db = JSON.parse(fs.readFileSync(dbFile));
+
+        // ==========================================
+        // COMANDOS DE ADMINISTRADOR (Solo tú)
+        // ==========================================
+        
+        // COMANDO: !agregar/numero/dias (Ej: !agregar/529993158710/30)
+        if (comandoBruto.startsWith('!agregar/')) {
+            if (!isAdmin) return await sock.sendMessage(jid, { text: "❌ No tienes permisos de administrador." });
+            
+            const partes = textoOriginal.trim().split('/'); 
+            if (partes.length === 3) {
+                const numNuevo = partes[1] + '@s.whatsapp.net';
+                const dias = parseInt(partes[2]);
+                
+                const vencimiento = new Date();
+                vencimiento.setDate(vencimiento.getDate() + dias);
+
+                db[numNuevo] = vencimiento.toISOString();
+                fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
+
+                return await sock.sendMessage(jid, { text: `✅ *CLIENTE REGISTRADO*\n📱 Número: ${partes[1]}\n⏳ Días: ${dias}\n📅 Vence el: ${vencimiento.toLocaleDateString('es-MX')}` });
+            } else {
+                return await sock.sendMessage(jid, { text: "⚠️ Formato incorrecto. Usa: !agregar/numero/dias" });
+            }
+        }
+
+        // COMANDO: !quitar/numero (Ej: !quitar/529993158710)
+        if (comandoBruto.startsWith('!quitar/')) {
+            if (!isAdmin) return;
+            const partes = textoOriginal.trim().split('/');
+            if (partes.length === 2) {
+                const numQuitar = partes[1] + '@s.whatsapp.net';
+                delete db[numQuitar];
+                fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
+                return await sock.sendMessage(jid, { text: `🗑️ *CLIENTE ELIMINADO*\nEl número ${partes[1]} ya no tiene acceso.` });
+            }
+        }
+
+        // ==========================================
+        // VERIFICADOR DE ACCESO (Para los clientes)
+        // ==========================================
+        
+        // Si alguien manda un comando (empieza con !) y NO eres tú, verificamos si pagó.
+        if (comandoBruto.startsWith('!') && !isAdmin) {
+            const fechaVencimiento = db[jid] ? new Date(db[jid]) : null;
+            const ahora = new Date();
+
+            if (!fechaVencimiento) {
+                return await sock.sendMessage(jid, { text: "❌ *ACCESO DENEGADO*\nNo estás registrado en el sistema. Contacta a soporte para adquirir tu membresía." });
+            } else if (ahora > fechaVencimiento) {
+                return await sock.sendMessage(jid, { text: "❌ *MEMBRESÍA VENCIDA*\nTu tiempo de acceso ha caducado. Por favor, renueva tu suscripción." });
+            }
+        }
+
+        // ==========================================
+        // COMANDOS DEL BOT (LOS QUE YA TENÍAS)
+        // ==========================================
+
+        const matchCorreo = textoOriginal.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/);
+        const emailLimpio = matchCorreo ? matchCorreo[1] : null;
+
         async function buscarYResponder(ruta, plataforma, email) {
-            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para: ${email}...` });
+            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para:\n${email}...` });
             try {
                 const response = await fetch(`http://127.0.0.1:${PORT}${ruta}`, {
                     method: 'POST',
@@ -411,63 +486,26 @@ async function iniciarBotWhatsApp() {
                         await sock.sendMessage(jid, { text: `✅ *ENLACE ENCONTRADO:*\n${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
                     }
                 } else {
-                    await sock.sendMessage(jid, { text: `❌ *No encontrado:* ${data.mensaje || data.error}` });
+                    await sock.sendMessage(jid, { text: `❌ *No encontrado:*\n${data.mensaje || data.error}` });
                 }
             } catch (error) {
                 await sock.sendMessage(jid, { text: `❌ Error interno conectando con el panel.` });
             }
         }
 
-               // ==========================================
-        // COMANDOS DEL BOT (LISTA COMPLETA)
-        // ==========================================
-        
-        // NETFLIX
-        if (comando.startsWith('!netflix ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-netflix', 'Netflix (Acceso)', email);
+        if (comandoBruto === '!ayuda' || comandoBruto === '!reglas') {
+            const mensajeAyuda = `🤖 *¡Hola! Soy el Bot Automático de Soporte.* 🤖\n\nPara pedir un código o enlace, escríbeme el comando de la plataforma seguido del correo de tu cuenta.\n\n👉 *Ejemplo:* \`!netflix tucorreo@gmail.com\`\n\n📌 *COMANDOS DISPONIBLES:*\n📺 *Netflix:* !netflix | !netflixpass\n🏰 *Disney:* !disney | !disneyhogar\n🎵 *Spotify:* !spotify\n🍿 *HBO Max:* !hbo | !hbopass\n⚽ *Vix:* !vixpass\n🍥 *Crunchyroll:* !crunchypass`;
+            await sock.sendMessage(jid, { text: mensajeAyuda });
         }
-        else if (comando.startsWith('!netflixpass ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-pass-netflix', 'Netflix (Contraseña)', email);
-        }
-        
-        // DISNEY
-        else if (comando.startsWith('!disney ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', email);
-        }
-        else if (comando.startsWith('!disneyhogar ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-enlace-hogar', 'Disney (Hogar)', email);
-        }
-        
-        // SPOTIFY
-        else if (comando.startsWith('!spotify ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', email);
-        }
-        
-        // HBO MAX
-        else if (comando.startsWith('!hbo ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-hbo', 'HBO Max (Acceso)', email);
-        }
-        else if (comando.startsWith('!hbopass ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-pass-hbo', 'HBO Max (Contraseña)', email);
-        }
-        
-        // VIX & CRUNCHYROLL (Solo contraseñas)
-        else if (comando.startsWith('!vixpass ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-enlace-vix', 'ViX (Contraseña)', email);
-        }
-        else if (comando.startsWith('!crunchypass ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-pass-crunchyroll', 'Crunchyroll (Contraseña)', email);
-        }
-
+        else if (comandoBruto === '!netflix' && emailLimpio) await buscarYResponder('/buscar-codigo-netflix', 'Netflix (Acceso)', emailLimpio);
+        else if (comandoBruto === '!netflixpass' && emailLimpio) await buscarYResponder('/buscar-pass-netflix', 'Netflix (Contraseña)', emailLimpio);
+        else if (comandoBruto === '!disney' && emailLimpio) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', emailLimpio);
+        else if (comandoBruto === '!disneyhogar' && emailLimpio) await buscarYResponder('/buscar-enlace-hogar', 'Disney (Hogar)', emailLimpio);
+        else if (comandoBruto === '!spotify' && emailLimpio) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', emailLimpio);
+        else if (comandoBruto === '!hbo' && emailLimpio) await buscarYResponder('/buscar-codigo-hbo', 'HBO Max (Acceso)', emailLimpio);
+        else if (comandoBruto === '!hbopass' && emailLimpio) await buscarYResponder('/buscar-pass-hbo', 'HBO Max (Contraseña)', emailLimpio);
+        else if (comandoBruto === '!vixpass' && emailLimpio) await buscarYResponder('/buscar-enlace-vix', 'ViX (Contraseña)', emailLimpio);
+        else if (comandoBruto === '!crunchypass' && emailLimpio) await buscarYResponder('/buscar-pass-crunchyroll', 'Crunchyroll (Contraseña)', emailLimpio);
     });
 }
 
