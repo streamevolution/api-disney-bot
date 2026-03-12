@@ -399,7 +399,7 @@ async function iniciarBotWhatsApp() {
         // TU NÚMERO DE ADMINISTRADOR (El único que puede dar acceso)
         // Escríbelo con tu código de país. Ej: "525664140028"
         // =======================================================
-        const ADMIN_NUMBER = "527719624236"; 
+        const ADMIN_NUMBER = "527719624236@s.whatsapp.net"; 
         const isAdmin = (jid === ADMIN_NUMBER);
 
         // --- MINI BASE DE DATOS (Manejada por Node.js FileSystem) ---
