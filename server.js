@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const imaps = require('imap-simple');
 const cors = require('cors');
+const fs = require('fs');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
 const app = express();
@@ -325,12 +326,12 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// EL BOT DE WHATSAPP (MODO CÓDIGO MANUAL)
+// EL BOT DE WHATSAPP
 // ==========================================
 
 async function iniciarBotWhatsApp() {
-    // Usamos una nueva carpeta para asegurar que no intente leer el QR roto del pasado
-    const { state, saveCreds } = await useMultiFileAuthState('/data/sesion_bot_whatsapp');
+    // Usamos la carpeta limpia
+    const { state, saveCreds } = await useMultiFileAuthState('/data/sesion_limpia_01');
     
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`📡 Usando WhatsApp v${version.join('.')}`);
@@ -338,28 +339,23 @@ async function iniciarBotWhatsApp() {
     const sock = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: false, // <-- APAGAMOS EL QR 
-        browser: ['Ubuntu', 'Chrome', '20.0.04'], // <-- FUNDAMENTAL PARA EL CÓDIGO
+        printQRInTerminal: false,
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
         syncFullHistory: false, 
         connectTimeoutMs: 60000 
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    // =======================================================
-    // ¡¡¡PON TU NÚMERO AQUÍ!!!
-    // Escribe tu número con código de país (Ej: 521XXXXXXXXXX)
-    // =======================================================
     if (!sock.authState.creds.registered) {
-        const NUMERO_DEL_BOT = "525664140028"; // <--- ESCRIBE TU NÚMERO ENTRE LAS COMILLAS
+        const NUMERO_DEL_BOT = "525664140028"; // Tu número del chip del bot
         
         if(NUMERO_DEL_BOT === "") {
-            console.log("❌ ERROR: Olvidaste poner tu número de teléfono en el código (Línea 441).");
+            console.log("❌ ERROR: Olvidaste poner tu número de teléfono.");
         } else {
             setTimeout(async () => {
                 try {
                     let codigo = await sock.requestPairingCode(NUMERO_DEL_BOT);
-                    // Le damos formato con un guion para que sea fácil de leer (ABCD-EFGH)
                     codigo = codigo?.match(/.{1,4}/g)?.join("-") || codigo;
                     console.log('\n======================================================');
                     console.log('📱 VINCULA TU WHATSAPP CON ESTE CÓDIGO: ' + codigo);
@@ -385,7 +381,7 @@ async function iniciarBotWhatsApp() {
         }
     });
 
-        sock.ev.on('messages.upsert', async m => {
+    sock.ev.on('messages.upsert', async m => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
@@ -396,25 +392,21 @@ async function iniciarBotWhatsApp() {
         const jid = msg.key.remoteJid; 
 
         // =======================================================
-        // TU NÚMERO DE ADMINISTRADOR (El único que puede dar acceso)
-        // Escríbelo con tu código de país. Ej: "525664140028"
+        // TU NÚMERO DE ADMINISTRADOR
         // =======================================================
-                // CONFIGURACIÓN ADMINISTRADOR (Pon solo tus 10 dígitos)
         const ADMIN_NUMBER = "7719624236"; 
         const isAdmin = jid.includes(ADMIN_NUMBER);
 
-
-        // --- MINI BASE DE DATOS (Manejada por Node.js FileSystem) ---
-        const fs = require('fs');
+        // --- MINI BASE DE DATOS ---
         const dbFile = '/data/usuarios.json';
         if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify({}));
         let db = JSON.parse(fs.readFileSync(dbFile));
 
         // ==========================================
-        // COMANDOS DE ADMINISTRADOR (Solo tú)
+        // COMANDOS DE ADMINISTRADOR
         // ==========================================
         
-        // COMANDO: !agregar/numero/dias (Ej: !agregar/529993158710/30)
+        // COMANDO: !agregar
         if (comandoBruto.startsWith('!agregar/')) {
             if (!isAdmin) return await sock.sendMessage(jid, { text: "❌ No tienes permisos de administrador." });
             
@@ -422,20 +414,17 @@ async function iniciarBotWhatsApp() {
             if (partes.length === 3) {
                 const numNuevo = partes[1] + '@s.whatsapp.net';
                 const dias = parseInt(partes[2]);
-                
                 const vencimiento = new Date();
                 vencimiento.setDate(vencimiento.getDate() + dias);
-
                 db[numNuevo] = vencimiento.toISOString();
                 fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
-
                 return await sock.sendMessage(jid, { text: `✅ *CLIENTE REGISTRADO*\n📱 Número: ${partes[1]}\n⏳ Días: ${dias}\n📅 Vence el: ${vencimiento.toLocaleDateString('es-MX')}` });
             } else {
                 return await sock.sendMessage(jid, { text: "⚠️ Formato incorrecto. Usa: !agregar/numero/dias" });
             }
         }
 
-        // COMANDO: !quitar/numero (Ej: !quitar/529993158710)
+        // COMANDO: !quitar
         if (comandoBruto.startsWith('!quitar/')) {
             if (!isAdmin) return;
             const partes = textoOriginal.trim().split('/');
@@ -447,11 +436,29 @@ async function iniciarBotWhatsApp() {
             }
         }
 
+        // COMANDO SECRETO: !limpiardb
+        if (comandoBruto === '!limpiardb') {
+            if (!isAdmin) return; 
+            db = {}; 
+            fs.writeFileSync(dbFile, JSON.stringify(db, null, 2)); 
+            return await sock.sendMessage(jid, { text: "🚨 *SISTEMA REINICIADO* 🚨\nLa base de datos ha sido vaciada por completo. Ningún cliente tiene acceso en este momento." });
+        }
+
+        // COMANDO DE LIMPIEZA: !borrarbasura
+        if (comandoBruto === '!borrarbasura') {
+            if (!isAdmin) return; 
+            const carpetaVieja = '/data/sesion_bot_whatsapp2';
+            if (fs.existsSync(carpetaVieja)) {
+                fs.rmSync(carpetaVieja, { recursive: true, force: true });
+                return await sock.sendMessage(jid, { text: "🧹 *BASURA ELIMINADA*\nLa sesión vieja y corrupta ha sido borrada de tu disco duro." });
+            } else {
+                return await sock.sendMessage(jid, { text: "👍 *TODO LIMPIO*\nNo se encontró ninguna sesión vieja que borrar." });
+            }
+        }
+
         // ==========================================
         // VERIFICADOR DE ACCESO (Para los clientes)
         // ==========================================
-        
-        // Si alguien manda un comando (empieza con !) y NO eres tú, verificamos si pagó.
         if (comandoBruto.startsWith('!') && !isAdmin) {
             const fechaVencimiento = db[jid] ? new Date(db[jid]) : null;
             const ahora = new Date();
@@ -464,9 +471,8 @@ async function iniciarBotWhatsApp() {
         }
 
         // ==========================================
-        // COMANDOS DEL BOT (LOS QUE YA TENÍAS)
+        // COMANDOS DEL BOT
         // ==========================================
-
         const matchCorreo = textoOriginal.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/);
         const emailLimpio = matchCorreo ? matchCorreo[1] : null;
 
@@ -486,6 +492,8 @@ async function iniciarBotWhatsApp() {
                         await sock.sendMessage(jid, { text: `✅ *CÓDIGO:* ${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
                     } else if (data.tipo === 'enlace') {
                         await sock.sendMessage(jid, { text: `✅ *ENLACE ENCONTRADO:*\n${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
+                    } else if (data.tipo === 'pago') {
+                        await sock.sendMessage(jid, { text: `✅ *PAGO ENCONTRADO*\nNombre: ${data.datos.nombre}\nMonto: ${data.datos.monto}\nFecha: ${data.datos.fecha}` });
                     }
                 } else {
                     await sock.sendMessage(jid, { text: `❌ *No encontrado:*\n${data.mensaje || data.error}` });
