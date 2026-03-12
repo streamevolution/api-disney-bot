@@ -360,6 +360,60 @@ app.post('/buscar-pago-nu', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTA 7: SPOTIFY - CÓDIGO DE INICIO (PROTEGIDA)
+// ==========================================
+app.post('/buscar-codigo-spotify', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.spotify.com'],
+            ['HEADER', 'SUBJECT', 'Tu código de inicio de sesión de Spotify'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            // Tomamos el correo más reciente
+            const rawBody = messages[messages.length - 1].parts[0].body;
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            
+            // Expresión regular para encontrar exactamente 6 dígitos seguidos
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                // Filtramos por si acaso se nos cuela un código de color oculto en el HTML
+                const codigosLimpios = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosLimpios.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0] });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código de Spotify." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos del código en el correo." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de Spotify para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor al buscar Spotify." });
+    } finally {
+        if (connection) {
+            connection.end();
+        }
+    }
+});
+
+
 function obtenerConfiguracion() {
     return {
         imap: {
