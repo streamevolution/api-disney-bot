@@ -331,7 +331,7 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 
 async function iniciarBotWhatsApp() {
     // Usamos la carpeta limpia
-    const { state, saveCreds } = await useMultiFileAuthState('/data/sesion_limpia_02');
+    const { state, saveCreds } = await useMultiFileAuthState('/data/botcito_zamora');
     
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`📡 Usando WhatsApp v${version.join('.')}`);
