@@ -7,7 +7,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Función para formatear la fecha a hora de México
+// ==========================================
+// FUNCIÓN PARA FORMATEAR LA FECHA DEL CORREO
+// ==========================================
 function formatearFecha(dateInput) {
     if (!dateInput) return "Fecha desconocida";
     try {
@@ -28,9 +30,10 @@ function formatearFecha(dateInput) {
 app.post('/buscar-correo', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -64,9 +67,10 @@ app.post('/buscar-correo', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró un código de acceso para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -76,9 +80,10 @@ app.post('/buscar-correo', async (req, res) => {
 app.post('/buscar-enlace-hogar', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -112,9 +117,10 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró el correo de Hogar para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -124,9 +130,10 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 app.post('/buscar-enlace-vix', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -159,9 +166,10 @@ app.post('/buscar-enlace-vix', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró correo de restablecimiento de Vix para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -171,9 +179,10 @@ app.post('/buscar-enlace-vix', async (req, res) => {
 app.post('/buscar-codigo-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -207,9 +216,10 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró un código de Netflix para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -219,9 +229,10 @@ app.post('/buscar-codigo-netflix', async (req, res) => {
 app.post('/buscar-pass-netflix', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -255,21 +266,23 @@ app.post('/buscar-pass-netflix', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró correo de restablecimiento de Netflix para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO (REDUCIDO A 20)
+// RUTA 6: NU - VERIFICAR PAGO
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { nombre, monto, fecha } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [['HEADER', 'SUBJECT', 'transferencia']];
@@ -280,7 +293,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
             let pagoEncontrado = false;
             let datosExtraidos = {};
 
-            // LÍMITE REGRESADO A 20 COMO LO PEDISTE
             const limite = Math.max(0, messages.length - 20);
             
             for (let i = messages.length - 1; i >= limite; i--) {
@@ -328,9 +340,10 @@ app.post('/buscar-pago-nu', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -340,9 +353,10 @@ app.post('/buscar-pago-nu', async (req, res) => {
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -392,9 +406,10 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -404,9 +419,10 @@ app.post('/buscar-pass-crunchyroll', async (req, res) => {
 app.post('/buscar-codigo-hbo', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -440,9 +456,10 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró un código de HBO Max para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
@@ -452,9 +469,10 @@ app.post('/buscar-codigo-hbo', async (req, res) => {
 app.post('/buscar-pass-hbo', async (req, res) => {
     const { email_usuario } = req.body; 
     const config = obtenerConfiguracion();
+    let connection;
 
     try {
-        const connection = await imaps.connect(config);
+        connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
         const searchCriteria = [
@@ -508,9 +526,61 @@ app.post('/buscar-pass-hbo', async (req, res) => {
         } else {
             res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de HBO Max para: ${email_usuario}` });
         }
-        connection.end();
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 10: SPOTIFY - CÓDIGO DE INICIO
+// ==========================================
+app.post('/buscar-codigo-spotify', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.spotify.com'],
+            ['HEADER', 'SUBJECT', 'Tu código de inicio de sesión de Spotify'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosLimpios = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosLimpios.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0], fecha: fechaCorreo });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código de Spotify." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos del código en el correo." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de Spotify para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor al buscar Spotify." });
+    } finally {
+        if (connection) { connection.end(); }
     }
 });
 
