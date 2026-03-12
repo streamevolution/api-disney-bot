@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 function formatearFecha(dateInput) {
     if (!dateInput) return "Fecha desconocida";
     try {
-        const d = new Date(dateInput);giigguig
+        const d = new Date(dateInput);
         return d.toLocaleString('es-MX', { 
             timeZone: 'America/Mexico_City',
             day: '2-digit', month: '2-digit', year: 'numeric',
