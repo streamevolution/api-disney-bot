@@ -2,9 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const imaps = require('imap-simple');
 const cors = require('cors');
-// Agregamos fetchLatestBaileysVersion a la importación
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 
 const app = express();
 app.use(cors());
@@ -327,37 +325,55 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// EL BOT DE WHATSAPP (A PRUEBA DE FALLOS)
+// EL BOT DE WHATSAPP (MODO CÓDIGO MANUAL)
 // ==========================================
 
 async function iniciarBotWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    // Usamos una nueva carpeta para asegurar que no intente leer el QR roto del pasado
+    const { state, saveCreds } = await useMultiFileAuthState('sesion_bot_whatsapp');
     
-    // TRUCO: Buscamos la versión más reciente de WhatsApp primero
     const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`📡 Usando WhatsApp v${version.join('.')}, isLatest: ${isLatest}`);
+    console.log(`📡 Usando WhatsApp v${version.join('.')}`);
 
     const sock = makeWASocket({
-        version, // Le pasamos la versión correcta para que Meta no nos bote
+        version,
         auth: state,
-        printQRInTerminal: true,
-        browser: ['Panel Admin', 'Chrome', '1.0.0'],
-        syncFullHistory: false, // Fundamental para no llenar la RAM de Railway
-        connectTimeoutMs: 60000 // Le damos más tiempo de conexión
+        printQRInTerminal: false, // <-- APAGAMOS EL QR 
+        browser: ['Ubuntu', 'Chrome', '20.0.04'], // <-- FUNDAMENTAL PARA EL CÓDIGO
+        syncFullHistory: false, 
+        connectTimeoutMs: 60000 
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
+    // =======================================================
+    // ¡¡¡PON TU NÚMERO AQUÍ!!!
+    // Escribe tu número con código de país (Ej: 521XXXXXXXXXX)
+    // =======================================================
+    if (!sock.authState.creds.registered) {
+        const NUMERO_DEL_BOT = "525664140028"; // <--- ESCRIBE TU NÚMERO ENTRE LAS COMILLAS
         
-        if (qr) {
-            qrcode.generate(qr, { small: true });
-            console.log('\n======================================================');
-            console.log('¡ESCENEA ESTE QR EN TU WHATSAPP PARA CONECTAR EL BOT!');
-            console.log('======================================================\n');
+        if(NUMERO_DEL_BOT === "") {
+            console.log("❌ ERROR: Olvidaste poner tu número de teléfono en el código (Línea 441).");
+        } else {
+            setTimeout(async () => {
+                try {
+                    let codigo = await sock.requestPairingCode(NUMERO_DEL_BOT);
+                    // Le damos formato con un guion para que sea fácil de leer (ABCD-EFGH)
+                    codigo = codigo?.match(/.{1,4}/g)?.join("-") || codigo;
+                    console.log('\n======================================================');
+                    console.log('📱 VINCULA TU WHATSAPP CON ESTE CÓDIGO: ' + codigo);
+                    console.log('======================================================\n');
+                } catch (error) {
+                    console.log('❌ Error generando el código. Revisa tu número:', error);
+                }
+            }, 3000); 
         }
+    }
 
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
+        
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('⚠️ Conexión cerrada. Reconectando...', shouldReconnect);
