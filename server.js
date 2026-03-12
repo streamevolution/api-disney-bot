@@ -325,61 +325,42 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// EL BOT DE WHATSAPP (MODO CÓDIGO MANUAL)
+// EL BOT DE WHATSAPP (CON FILTRO ANTI-BASURA)
 // ==========================================
 
 async function iniciarBotWhatsApp() {
-    // Usamos una nueva carpeta para asegurar que no intente leer el QR roto del pasado
     const { state, saveCreds } = await useMultiFileAuthState('sesion_bot_whatsapp');
-    
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`📡 Usando WhatsApp v${version.join('.')}`);
+    const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: false, // <-- APAGAMOS EL QR 
-        browser: ['Ubuntu', 'Chrome', '20.0.04'], // <-- FUNDAMENTAL PARA EL CÓDIGO
+        printQRInTerminal: false,
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
         syncFullHistory: false, 
         connectTimeoutMs: 60000 
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    // =======================================================
-    // ¡¡¡PON TU NÚMERO AQUÍ!!!
-    // Escribe tu número con código de país (Ej: 521XXXXXXXXXX)
-    // =======================================================
     if (!sock.authState.creds.registered) {
-        const NUMERO_DEL_BOT = "525664140028"; // <--- ESCRIBE TU NÚMERO ENTRE LAS COMILLAS
-        
-        if(NUMERO_DEL_BOT === "") {
-            console.log("❌ ERROR: Olvidaste poner tu número de teléfono en el código (Línea 441).");
-        } else {
+        const NUMERO_DEL_BOT = ""; 
+        if(NUMERO_DEL_BOT !== "") {
             setTimeout(async () => {
                 try {
                     let codigo = await sock.requestPairingCode(NUMERO_DEL_BOT);
-                    // Le damos formato con un guion para que sea fácil de leer (ABCD-EFGH)
                     codigo = codigo?.match(/.{1,4}/g)?.join("-") || codigo;
-                    console.log('\n======================================================');
                     console.log('📱 VINCULA TU WHATSAPP CON ESTE CÓDIGO: ' + codigo);
-                    console.log('======================================================\n');
-                } catch (error) {
-                    console.log('❌ Error generando el código. Revisa tu número:', error);
-                }
+                } catch (error) {}
             }, 3000); 
         }
     }
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
-        
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('⚠️ Conexión cerrada. Reconectando...', shouldReconnect);
-            if (shouldReconnect) {
-                iniciarBotWhatsApp();
-            }
+            if (shouldReconnect) iniciarBotWhatsApp();
         } else if (connection === 'open') {
             console.log('✅ ¡Bot de WhatsApp Conectado y Listo!');
         }
@@ -389,12 +370,20 @@ async function iniciarBotWhatsApp() {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const texto = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const comando = texto.toLowerCase().trim();
+        // 1. Extraemos el texto crudo del mensaje
+        const textoOriginal = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        if (!textoOriginal) return;
+
+        // 2. Separamos la primera palabra para saber qué comando es
+        const comandoBruto = textoOriginal.trim().split(/\s+/)[0].toLowerCase();
         const jid = msg.key.remoteJid; 
 
+        // 3. LA SOLUCIÓN MÁGICA: Usamos Expresiones Regulares para pescar el correo limpio ignorando TODO lo demás
+        const matchCorreo = textoOriginal.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/);
+        const emailLimpio = matchCorreo ? matchCorreo[1] : null;
+
         async function buscarYResponder(ruta, plataforma, email) {
-            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para: ${email}...` });
+            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para:\n${email}...` });
             try {
                 const response = await fetch(`http://127.0.0.1:${PORT}${ruta}`, {
                     method: 'POST',
@@ -411,7 +400,7 @@ async function iniciarBotWhatsApp() {
                         await sock.sendMessage(jid, { text: `✅ *ENLACE ENCONTRADO:*\n${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
                     }
                 } else {
-                    await sock.sendMessage(jid, { text: `❌ *No encontrado:* ${data.mensaje || data.error}` });
+                    await sock.sendMessage(jid, { text: `❌ *No encontrado:*\n${data.mensaje || data.error}` });
                 }
             } catch (error) {
                 await sock.sendMessage(jid, { text: `❌ Error interno conectando con el panel.` });
@@ -419,17 +408,14 @@ async function iniciarBotWhatsApp() {
         }
 
         // COMANDOS DEL BOT
-        if (comando.startsWith('!netflix ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-netflix', 'Netflix', email);
+        if (comandoBruto === '!netflix' && emailLimpio) {
+            await buscarYResponder('/buscar-codigo-netflix', 'Netflix', emailLimpio);
         }
-        else if (comando.startsWith('!spotify ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', email);
+        else if (comandoBruto === '!spotify' && emailLimpio) {
+            await buscarYResponder('/buscar-codigo-spotify', 'Spotify', emailLimpio);
         }
-        else if (comando.startsWith('!disney ')) {
-            const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', email);
+        else if (comandoBruto === '!disney' && emailLimpio) {
+            await buscarYResponder('/buscar-correo', 'Disney (Acceso)', emailLimpio);
         }
     });
 }
