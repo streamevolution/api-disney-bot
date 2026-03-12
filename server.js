@@ -351,7 +351,7 @@ async function iniciarBotWhatsApp() {
     // Escribe tu número con código de país (Ej: 521XXXXXXXXXX)
     // =======================================================
     if (!sock.authState.creds.registered) {
-        const NUMERO_DEL_BOT = "5215664140028"; // <--- ESCRIBE TU NÚMERO ENTRE LAS COMILLAS
+        const NUMERO_DEL_BOT = "525664140028"; // <--- ESCRIBE TU NÚMERO ENTRE LAS COMILLAS
         
         if(NUMERO_DEL_BOT === "") {
             console.log("❌ ERROR: Olvidaste poner tu número de teléfono en el código (Línea 441).");
