@@ -4,10 +4,6 @@ const imaps = require('imap-simple');
 const cors = require('cors');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
-// ESCUDO ANTI-CAÍDAS: Evita que el servidor se apague si WhatsApp manda errores raros
-process.on('uncaughtException', (err) => console.log('⚠️ Error ignorado (Exception):', err.message));
-process.on('unhandledRejection', (err) => console.log('⚠️ Error ignorado (Rejection):', err.message));
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -66,8 +62,9 @@ app.post('/buscar-correo', async (req, res) => {
 
             if (coincidencias) {
                 const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
-                else res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
+                if (codigosReales.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
+                } else res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
             } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
         } else res.json({ success: false, mensaje: `No se encontró código de Disney para: ${email_usuario}` });
     } catch (error) { res.status(500).json({ success: false, error: "Error interno del servidor." });
@@ -92,8 +89,9 @@ app.post('/buscar-enlace-hogar', async (req, res) => {
 
             if (coincidencias) {
                 const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
-                else res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
+                if (codigosReales.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
+                } else res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
             } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
         } else res.json({ success: false, mensaje: `No se encontró correo de Hogar para: ${email_usuario}` });
     } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
@@ -327,45 +325,47 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// EL BOT DE WHATSAPP (CON FILTRO Y ANTI-CAÍDAS)
+// EL BOT DE WHATSAPP (MODO CÓDIGO MANUAL)
 // ==========================================
 
 async function iniciarBotWhatsApp() {
-    // Carpeta nueva para olvidar la sesión corrupta anterior
-    const { state, saveCreds } = await useMultiFileAuthState('auth_bot_limpio');
-    const { version } = await fetchLatestBaileysVersion();
+    // Usamos una nueva carpeta para asegurar que no intente leer el QR roto del pasado
+    const { state, saveCreds } = await useMultiFileAuthState('sesion_bot_whatsapp');
+    
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`📡 Usando WhatsApp v${version.join('.')}`);
 
     const sock = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
+        printQRInTerminal: false, // <-- APAGAMOS EL QR 
+        browser: ['Ubuntu', 'Chrome', '20.0.04'], // <-- FUNDAMENTAL PARA EL CÓDIGO
         syncFullHistory: false, 
         connectTimeoutMs: 60000 
     });
 
     sock.ev.on('creds.update', saveCreds);
 
+    // =======================================================
+    // ¡¡¡PON TU NÚMERO AQUÍ!!!
+    // Escribe tu número con código de país (Ej: 521XXXXXXXXXX)
+    // =======================================================
     if (!sock.authState.creds.registered) {
+        const NUMERO_DEL_BOT = "5215664140028"; // <--- ESCRIBE TU NÚMERO ENTRE LAS COMILLAS
         
-        // =======================================================
-        // LÍNEA 307 - ¡¡¡PON TU NÚMERO AQUÍ!!!
-        // Escribe tu número con código de país (Ej: "527711234567")
-        // =======================================================
-        const NUMERO_DEL_BOT = "5215664140028"; 
-        
-        if(NUMERO_DEL_BOT === "" || NUMERO_DEL_BOT === "5215664140028") {
-            console.log("\n❌❌❌ ALERTA: NO PUSISTE TU NÚMERO EN LA LÍNEA 307 DEL CÓDIGO. EL BOT NO PUEDE CONECTARSE. ❌❌❌\n");
+        if(NUMERO_DEL_BOT === "") {
+            console.log("❌ ERROR: Olvidaste poner tu número de teléfono en el código (Línea 441).");
         } else {
             setTimeout(async () => {
                 try {
                     let codigo = await sock.requestPairingCode(NUMERO_DEL_BOT);
+                    // Le damos formato con un guion para que sea fácil de leer (ABCD-EFGH)
                     codigo = codigo?.match(/.{1,4}/g)?.join("-") || codigo;
                     console.log('\n======================================================');
                     console.log('📱 VINCULA TU WHATSAPP CON ESTE CÓDIGO: ' + codigo);
                     console.log('======================================================\n');
                 } catch (error) {
-                    console.log('⚠️ Error al generar el código (ignóralo si se reconecta solo):', error.message);
+                    console.log('❌ Error generando el código. Revisa tu número:', error);
                 }
             }, 3000); 
         }
@@ -373,9 +373,13 @@ async function iniciarBotWhatsApp() {
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
+        
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) iniciarBotWhatsApp();
+            console.log('⚠️ Conexión cerrada. Reconectando...', shouldReconnect);
+            if (shouldReconnect) {
+                iniciarBotWhatsApp();
+            }
         } else if (connection === 'open') {
             console.log('✅ ¡Bot de WhatsApp Conectado y Listo!');
         }
@@ -385,18 +389,12 @@ async function iniciarBotWhatsApp() {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const textoOriginal = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        if (!textoOriginal) return;
-
-        const comandoBruto = textoOriginal.trim().split(/\s+/)[0].toLowerCase();
+        const texto = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        const comando = texto.toLowerCase().trim();
         const jid = msg.key.remoteJid; 
 
-        // Aspiradora de texto: Saca el correo limpio ignorando enlaces azules de WhatsApp
-        const matchCorreo = textoOriginal.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/);
-        const emailLimpio = matchCorreo ? matchCorreo[1] : null;
-
         async function buscarYResponder(ruta, plataforma, email) {
-            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para:\n${email}...` });
+            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para: ${email}...` });
             try {
                 const response = await fetch(`http://127.0.0.1:${PORT}${ruta}`, {
                     method: 'POST',
@@ -413,16 +411,26 @@ async function iniciarBotWhatsApp() {
                         await sock.sendMessage(jid, { text: `✅ *ENLACE ENCONTRADO:*\n${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
                     }
                 } else {
-                    await sock.sendMessage(jid, { text: `❌ *No encontrado:*\n${data.mensaje || data.error}` });
+                    await sock.sendMessage(jid, { text: `❌ *No encontrado:* ${data.mensaje || data.error}` });
                 }
             } catch (error) {
                 await sock.sendMessage(jid, { text: `❌ Error interno conectando con el panel.` });
             }
         }
 
-        if (comandoBruto === '!netflix' && emailLimpio) await buscarYResponder('/buscar-codigo-netflix', 'Netflix', emailLimpio);
-        else if (comandoBruto === '!spotify' && emailLimpio) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', emailLimpio);
-        else if (comandoBruto === '!disney' && emailLimpio) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', emailLimpio);
+        // COMANDOS DEL BOT
+        if (comando.startsWith('!netflix ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-codigo-netflix', 'Netflix', email);
+        }
+        else if (comando.startsWith('!spotify ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', email);
+        }
+        else if (comando.startsWith('!disney ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', email);
+        }
     });
 }
 
