@@ -331,7 +331,7 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 
 async function iniciarBotWhatsApp() {
     // Usamos la carpeta limpia
-    const { state, saveCreds } = await useMultiFileAuthState('/data/botcito_zamora');
+    const { state, saveCreds } = await useMultiFileAuthState('/data/botcito_zamora_2');
     
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`📡 Usando WhatsApp v${version.join('.')}`);
@@ -348,7 +348,7 @@ async function iniciarBotWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 
     if (!sock.authState.creds.registered) {
-        const NUMERO_DEL_BOT = "525664140028"; // Tu número del chip del bot
+        const NUMERO_DEL_BOT = "5215664140028"; // Tu número del chip del bot
         
         if(NUMERO_DEL_BOT === "") {
             console.log("❌ ERROR: Olvidaste poner tu número de teléfono.");
