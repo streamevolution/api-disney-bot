@@ -352,9 +352,9 @@ async function iniciarBotWhatsApp() {
         // LÍNEA 307 - ¡¡¡PON TU NÚMERO AQUÍ!!!
         // Escribe tu número con código de país (Ej: "527711234567")
         // =======================================================
-        const NUMERO_DEL_BOT = "52164140028"; 
+        const NUMERO_DEL_BOT = "5215664140028"; 
         
-        if(NUMERO_DEL_BOT === "" || NUMERO_DEL_BOT === "52164140028") {
+        if(NUMERO_DEL_BOT === "" || NUMERO_DEL_BOT === "5215664140028") {
             console.log("\n❌❌❌ ALERTA: NO PUSISTE TU NÚMERO EN LA LÍNEA 307 DEL CÓDIGO. EL BOT NO PUEDE CONECTARSE. ❌❌❌\n");
         } else {
             setTimeout(async () => {
