@@ -331,7 +331,7 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 
 async function iniciarBotWhatsApp() {
     // Usamos la carpeta limpia
-    const { state, saveCreds } = await useMultiFileAuthState('/data/sesion_limpia_01');
+    const { state, saveCreds } = await useMultiFileAuthState('/data/sesion_limpia_02');
     
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`📡 Usando WhatsApp v${version.join('.')}`);
@@ -452,7 +452,7 @@ async function iniciarBotWhatsApp() {
         // COMANDO DE LIMPIEZA: !borrarbasura
         if (comandoBruto === '!borrarbasura') {
             if (!isAdmin) return; 
-            const carpetaVieja = '/data/sesion_bot_whatsapp';
+            const carpetaVieja = '/data/sesion_limpia_01';
             if (fs.existsSync(carpetaVieja)) {
                 fs.rmSync(carpetaVieja, { recursive: true, force: true });
                 return await sock.sendMessage(jid, { text: "🧹 *BASURA ELIMINADA*\nLa sesión vieja y corrupta ha sido borrada de tu disco duro." });
