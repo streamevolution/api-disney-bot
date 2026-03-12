@@ -418,19 +418,56 @@ async function iniciarBotWhatsApp() {
             }
         }
 
-        // COMANDOS DEL BOT
+               // ==========================================
+        // COMANDOS DEL BOT (LISTA COMPLETA)
+        // ==========================================
+        
+        // NETFLIX
         if (comando.startsWith('!netflix ')) {
             const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-netflix', 'Netflix', email);
+            if(email) await buscarYResponder('/buscar-codigo-netflix', 'Netflix (Acceso)', email);
         }
-        else if (comando.startsWith('!spotify ')) {
+        else if (comando.startsWith('!netflixpass ')) {
             const email = comando.split(' ')[1];
-            if(email) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', email);
+            if(email) await buscarYResponder('/buscar-pass-netflix', 'Netflix (Contraseña)', email);
         }
+        
+        // DISNEY
         else if (comando.startsWith('!disney ')) {
             const email = comando.split(' ')[1];
             if(email) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', email);
         }
+        else if (comando.startsWith('!disneyhogar ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-enlace-hogar', 'Disney (Hogar)', email);
+        }
+        
+        // SPOTIFY
+        else if (comando.startsWith('!spotify ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', email);
+        }
+        
+        // HBO MAX
+        else if (comando.startsWith('!hbo ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-codigo-hbo', 'HBO Max (Acceso)', email);
+        }
+        else if (comando.startsWith('!hbopass ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-pass-hbo', 'HBO Max (Contraseña)', email);
+        }
+        
+        // VIX & CRUNCHYROLL (Solo contraseñas)
+        else if (comando.startsWith('!vixpass ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-enlace-vix', 'ViX (Contraseña)', email);
+        }
+        else if (comando.startsWith('!crunchypass ')) {
+            const email = comando.split(' ')[1];
+            if(email) await buscarYResponder('/buscar-pass-crunchyroll', 'Crunchyroll (Contraseña)', email);
+        }
+
     });
 }
 
