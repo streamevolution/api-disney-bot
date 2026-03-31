@@ -585,7 +585,7 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 11: STORI - VERIFICAR PAGO STRICTO
+// RUTA 11: STORI - VERIFICAR PAGO (EL MAZO DEFINITIVO)
 // ==========================================
 app.post('/buscar-pago-stori', async (req, res) => {
     const { clave_rastreo, monto } = req.body; 
@@ -596,10 +596,10 @@ app.post('/buscar-pago-stori', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Busca correos del remitente con el asunto esperado
+        // BÚSQUEDA AMPLIA: Solo filtramos por el remitente. 
+        // Quitamos la restricción del "Asunto" para asegurarnos al 100% de que IMAP encuentre el correo.
         const searchCriteria = [
-            ['FROM', 'cuenta@info.storicard.com'],
-            ['HEADER', 'SUBJECT', 'Recibiste']
+            ['FROM', 'cuenta@info.storicard.com']
         ];
         
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
@@ -609,44 +609,51 @@ app.post('/buscar-pago-stori', async (req, res) => {
             let pagoEncontrado = false;
             let datosExtraidos = {};
 
-            const limite = Math.max(0, messages.length - 20);
+            // Revisamos los últimos 30 correos de Stori por seguridad
+            const limite = Math.max(0, messages.length - 30);
             
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
-                // 1. Limpieza inicial para el Monto
-                // Quitamos saltos de línea codificados, =3D y etiquetas HTML de forma más agresiva
-                let bodyProcessed = rawBody
-                    .replace(/=\r?\n/g, '')
-                    .replace(/=3D/gi, '=')
-                    .replace(/=20/gi, ' ')
-                    .replace(/=C2=A0/gi, ' ')
-                    .replace(/&nbsp;/gi, ' ')
-                    .replace(/<[^>]+>/g, ' ');
-
-                let textoNormalizado = bodyProcessed.toUpperCase().replace(/\s+/g, ' ');
-
-                // 2. Extraer Monto
-                let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
+                // DESTRUCCIÓN DE FORMATO: 
+                // Borramos todo lo que NO sea una letra de la A a la Z, un número del 0 al 9, un punto o un signo de dólar.
+                // Esto destruye saltos de línea, códigos HTML ocultos y espacios, uniendo el texto por completo.
+                let textoSuperLimpio = rawBody.replace(/[^a-zA-Z0-9$.]/g, '').toUpperCase();
                 
-                // Buscamos la palabra MONTO seguida de cualquier cosa que no sea número, y capturamos los números
-                const matchMonto = textoNormalizado.match(/MONTO[^0-9]*([0-9,.]+)/);
-                let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
-                let montoCorreo = parseFloat(montoCorreoStr); 
-                
-                let montoEsExacto = (montoCorreo === montoBuscado);
-                
-                // 3. Extraer Clave de Rastreo (EL TRUCO DEFINITIVO)
-                // Eliminamos ABSOLUTAMENTE TODO lo que no sea letra o número del correo.
-                // Esto evita que cualquier etiqueta invisible, tabulación o salto de línea rompa la clave.
-                let textoSuperLimpio = textoNormalizado.replace(/[^A-Z0-9]/g, '');
-                
-                // Limpiamos la clave que ingresaste en el panel igual para que coincidan 100%
+                // Normalizamos lo que ingresaste en tu panel de la misma manera
                 let claveBuscadaLimpia = clave_rastreo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                let montoBuscadoFloat = parseFloat(monto.replace(/[^0-9.]/g, '')); // Si escribiste "1" se vuelve 1.
 
-                // Validación estricta y única de la Clave de Rastreo en el bloque sin espacios
+                // 1. Verificamos la clave
                 let claveEsExacta = textoSuperLimpio.includes(claveBuscadaLimpia);
 
+                // 2. Verificamos el monto
+                let montoEsExacto = false;
+                let montoCorreoStr = "0";
+
+                // Escenario A: El texto dice "MONTO$1.00" o "MONTO1.00"
+                const matchMonto = textoSuperLimpio.match(/MONTO\$?([0-9.]+)/);
+                if (matchMonto) {
+                    let montoEnCorreo = parseFloat(matchMonto[1]);
+                    if (montoEnCorreo === montoBuscadoFloat) {
+                        montoEsExacto = true;
+                        montoCorreoStr = matchMonto[1];
+                    }
+                }
+
+                // Escenario B: El encabezado dice "RECIBISTE$1.00"
+                if (!montoEsExacto) {
+                    const matchRecibiste = textoSuperLimpio.match(/RECIBISTE\$?([0-9.]+)/);
+                    if (matchRecibiste) {
+                        let montoEnCorreo = parseFloat(matchRecibiste[1]);
+                        if (montoEnCorreo === montoBuscadoFloat) {
+                            montoEsExacto = true;
+                            montoCorreoStr = matchRecibiste[1];
+                        }
+                    }
+                }
+
+                // Si encontramos ambos datos en el MISMO correo, declaramos victoria
                 if (claveEsExacta && montoEsExacto) {
                     pagoEncontrado = true;
                     
