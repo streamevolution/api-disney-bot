@@ -585,10 +585,11 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 11: STORI - VERIFICAR PAGO (EL MAZO DEFINITIVO)
+// RUTA 11: STORI - VERIFICAR PAGO CON BANCO
 // ==========================================
 app.post('/buscar-pago-stori', async (req, res) => {
-    const { clave_rastreo, monto } = req.body; 
+    // AHORA RECIBIMOS LA CLAVE, EL BANCO Y EL MONTO
+    const { clave_rastreo, banco, monto } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
@@ -596,8 +597,6 @@ app.post('/buscar-pago-stori', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // BÚSQUEDA AMPLIA: Solo filtramos por el remitente. 
-        // Quitamos la restricción del "Asunto" para asegurarnos al 100% de que IMAP encuentre el correo.
         const searchCriteria = [
             ['FROM', 'cuenta@info.storicard.com']
         ];
@@ -609,29 +608,35 @@ app.post('/buscar-pago-stori', async (req, res) => {
             let pagoEncontrado = false;
             let datosExtraidos = {};
 
-            // Revisamos los últimos 30 correos de Stori por seguridad
             const limite = Math.max(0, messages.length - 30);
             
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
-                // DESTRUCCIÓN DE FORMATO: 
-                // Borramos todo lo que NO sea una letra de la A a la Z, un número del 0 al 9, un punto o un signo de dólar.
-                // Esto destruye saltos de línea, códigos HTML ocultos y espacios, uniendo el texto por completo.
+                // DESTRUCCIÓN DE FORMATO: Borramos todo lo que NO sea letra o número
                 let textoSuperLimpio = rawBody.replace(/[^a-zA-Z0-9$.]/g, '').toUpperCase();
                 
-                // Normalizamos lo que ingresaste en tu panel de la misma manera
+                // Normalizamos los datos de búsqueda
                 let claveBuscadaLimpia = clave_rastreo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-                let montoBuscadoFloat = parseFloat(monto.replace(/[^0-9.]/g, '')); // Si escribiste "1" se vuelve 1.
+                let bancoBuscadoLimpio = banco.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                let montoBuscadoFloat = parseFloat(monto.replace(/[^0-9.]/g, '')); 
 
                 // 1. Verificamos la clave
                 let claveEsExacta = textoSuperLimpio.includes(claveBuscadaLimpia);
 
-                // 2. Verificamos el monto
+                // 2. Verificamos el Banco (Entidad Emisora)
+                // Al quitar los espacios "ENTIDAD EMISORA MIFEL" se vuelve "ENTIDADEMISORAMIFEL"
+                let bancoEsExacto = textoSuperLimpio.includes("ENTIDADEMISORA" + bancoBuscadoLimpio);
+
+                // Si no lo encuentra como Entidad Emisora, buscamos si el correo en general dice "RECIBISTE $1.00 DE MIFEL"
+                if (!bancoEsExacto) {
+                    bancoEsExacto = textoSuperLimpio.includes("DE" + bancoBuscadoLimpio);
+                }
+
+                // 3. Verificamos el monto
                 let montoEsExacto = false;
                 let montoCorreoStr = "0";
 
-                // Escenario A: El texto dice "MONTO$1.00" o "MONTO1.00"
                 const matchMonto = textoSuperLimpio.match(/MONTO\$?([0-9.]+)/);
                 if (matchMonto) {
                     let montoEnCorreo = parseFloat(matchMonto[1]);
@@ -641,7 +646,6 @@ app.post('/buscar-pago-stori', async (req, res) => {
                     }
                 }
 
-                // Escenario B: El encabezado dice "RECIBISTE$1.00"
                 if (!montoEsExacto) {
                     const matchRecibiste = textoSuperLimpio.match(/RECIBISTE\$?([0-9.]+)/);
                     if (matchRecibiste) {
@@ -653,12 +657,13 @@ app.post('/buscar-pago-stori', async (req, res) => {
                     }
                 }
 
-                // Si encontramos ambos datos en el MISMO correo, declaramos victoria
-                if (claveEsExacta && montoEsExacto) {
+                // AHORA TIENEN QUE COINCIDIR LAS 3 COSAS: Clave, Banco y Monto
+                if (claveEsExacta && bancoEsExacto && montoEsExacto) {
                     pagoEncontrado = true;
                     
                     datosExtraidos = {
-                        clave_rastreo: claveBuscadaLimpia,
+                        clave_rastreo: clave_rastreo.toUpperCase(), // Mostramos la original para el diseño
+                        banco: banco.toUpperCase(),                 // Mostramos el banco original para el diseño
                         monto: "$" + montoCorreoStr,
                         fecha_recibido: formatearFecha(messages[i].attributes.date)
                     };
@@ -669,7 +674,7 @@ app.post('/buscar-pago-stori', async (req, res) => {
             if (pagoEncontrado) {
                 res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de la clave de rastreo ${clave_rastreo} por $${monto}.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito de la clave ${clave_rastreo} del banco ${banco} por $${monto}.` });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Stori en tu bandeja.` });
