@@ -596,7 +596,7 @@ app.post('/buscar-pago-stori', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Busca correos del remitente
+        // Busca correos del remitente con el asunto esperado
         const searchCriteria = [
             ['FROM', 'cuenta@info.storicard.com'],
             ['HEADER', 'SUBJECT', 'Recibiste']
@@ -614,33 +614,44 @@ app.post('/buscar-pago-stori', async (req, res) => {
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
-                // Normalizamos el texto quitando etiquetas HTML y saltos de línea
-                let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
-                let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
+                // 1. Limpieza inicial para el Monto
+                // Quitamos saltos de línea codificados, =3D y etiquetas HTML de forma más agresiva
+                let bodyProcessed = rawBody
+                    .replace(/=\r?\n/g, '')
+                    .replace(/=3D/gi, '=')
+                    .replace(/=20/gi, ' ')
+                    .replace(/=C2=A0/gi, ' ')
+                    .replace(/&nbsp;/gi, ' ')
+                    .replace(/<[^>]+>/g, ' ');
 
-                // TRUCO INFALIBLE: Quitamos todos los espacios en blanco del texto del correo
-                // Esto evita que etiquetas HTML que se volvieron espacios rompan la clave.
-                let textoSinEspacios = textoNormalizado.replace(/\s+/g, '');
+                let textoNormalizado = bodyProcessed.toUpperCase().replace(/\s+/g, ' ');
 
-                // Datos ingresados en el Panel
-                let claveBuscada = clave_rastreo.replace(/\s+/g, '').trim().toUpperCase();
+                // 2. Extraer Monto
                 let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
-
-                // Extracción del monto del correo (buscando los números que sigan a la palabra MONTO)
+                
+                // Buscamos la palabra MONTO seguida de cualquier cosa que no sea número, y capturamos los números
                 const matchMonto = textoNormalizado.match(/MONTO[^0-9]*([0-9,.]+)/);
                 let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
                 let montoCorreo = parseFloat(montoCorreoStr); 
                 
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 
+                // 3. Extraer Clave de Rastreo (EL TRUCO DEFINITIVO)
+                // Eliminamos ABSOLUTAMENTE TODO lo que no sea letra o número del correo.
+                // Esto evita que cualquier etiqueta invisible, tabulación o salto de línea rompa la clave.
+                let textoSuperLimpio = textoNormalizado.replace(/[^A-Z0-9]/g, '');
+                
+                // Limpiamos la clave que ingresaste en el panel igual para que coincidan 100%
+                let claveBuscadaLimpia = clave_rastreo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
                 // Validación estricta y única de la Clave de Rastreo en el bloque sin espacios
-                let claveEsExacta = textoSinEspacios.includes(claveBuscada);
+                let claveEsExacta = textoSuperLimpio.includes(claveBuscadaLimpia);
 
                 if (claveEsExacta && montoEsExacto) {
                     pagoEncontrado = true;
                     
                     datosExtraidos = {
-                        clave_rastreo: claveBuscada,
+                        clave_rastreo: claveBuscadaLimpia,
                         monto: "$" + montoCorreoStr,
                         fecha_recibido: formatearFecha(messages[i].attributes.date)
                     };
