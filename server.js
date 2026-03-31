@@ -2,13 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const imaps = require('imap-simple');
 const cors = require('cors');
-const fs = require('fs');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-const PORT = process.env.PORT || 3000;
 
 // ==========================================
 // FUNCIÓN PARA FORMATEAR LA FECHA DEL CORREO
@@ -27,6 +24,666 @@ function formatearFecha(dateInput) {
     }
 }
 
+// ==========================================
+// RUTA 1: DISNEY - ACCESO 
+// ==========================================
+app.post('/buscar-correo', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
+            ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosReales.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de acceso para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 2: DISNEY - HOGAR 
+// ==========================================
+app.post('/buscar-enlace-hogar', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'disneyplus@trx.mail2.disneyplus.com'],
+            ['HEADER', 'SUBJECT', 'Hogar'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosReales.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos en el correo." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró el correo de Hogar para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 3: VIX - ENLACE DE CONTRASEÑA 
+// ==========================================
+app.post('/buscar-enlace-vix', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'vix@vix.com'],
+            ['HEADER', 'SUBJECT', 'contraseña'], 
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
+            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                link.toLowerCase().includes('vix') && !link.toLowerCase().includes('.png') && !link.toLowerCase().includes('.jpg') && !link.toLowerCase().includes('help')
+            );
+
+            if (enlacesLimpios.length > 0) {
+                enlacesLimpios.sort((a, b) => b.length - a.length);
+                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0], fecha: fechaCorreo });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no enlaces válidos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró correo de restablecimiento de Vix para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 4: NETFLIX - CÓDIGO DE INICIO 
+// ==========================================
+app.post('/buscar-codigo-netflix', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'info@account.netflix.com'],
+            ['HEADER', 'SUBJECT', 'Netflix: Tu código de inicio de sesión'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            const regexCodigo = /\b\d(?:\s*\d){3}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosLimpios = coincidencias.map(num => num.replace(/\s+/g, ''));
+                if (codigosLimpios.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0], fecha: fechaCorreo });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron 4 dígitos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de Netflix para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 5: NETFLIX - ENLACE DE CONTRASEÑA 
+// ==========================================
+app.post('/buscar-pass-netflix', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'info@account.netflix.com'],
+            ['HEADER', 'SUBJECT', 'restablecimiento'], 
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+            
+            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
+            const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+            const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+
+            const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                link.toLowerCase().includes('netflix') && !link.toLowerCase().includes('.png') && !link.toLowerCase().includes('help')
+            );
+
+            if (enlacesLimpios.length > 0) {
+                enlacesLimpios.sort((a, b) => b.length - a.length);
+                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0], fecha: fechaCorreo });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no enlaces válidos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró correo de restablecimiento de Netflix para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 6: NU - VERIFICAR PAGO
+// ==========================================
+app.post('/buscar-pago-nu', async (req, res) => {
+    const { nombre, monto, fecha } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [['HEADER', 'SUBJECT', 'transferencia']];
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            let pagoEncontrado = false;
+            let datosExtraidos = {};
+
+            const limite = Math.max(0, messages.length - 20);
+            
+            for (let i = messages.length - 1; i >= limite; i--) {
+                const rawBody = messages[i].parts[0].body;
+                
+                let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+                let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
+
+                let nombreBuscado = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
+                let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
+                let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
+
+                const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
+                const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
+                const matchFecha = textoNormalizado.match(/FECHA:\s*([0-9A-Z\s]+?)(?=\s*HORA:|$)/);
+                const matchHora = textoNormalizado.match(/HORA:\s*([0-9:]+)/);
+
+                let nombreCorreo = matchName ? matchName[1].trim() : "";
+                let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
+                let montoCorreo = parseFloat(montoCorreoStr); 
+                let fechaCorreo = matchFecha ? matchFecha[1].trim() : "";
+                let horaCorreo = matchHora ? matchHora[1].trim() : "No detectada";
+
+                let nombreEsExacto = (nombreCorreo === nombreBuscado);
+                let montoEsExacto = (montoCorreo === montoBuscado);
+                let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
+
+                if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
+                    pagoEncontrado = true;
+                    datosExtraidos = {
+                        nombre: nombreCorreo,
+                        monto: "$" + montoCorreoStr,
+                        fecha: fechaCorreo,
+                        hora: horaCorreo
+                    };
+                    break; 
+                }
+            }
+
+            if (pagoEncontrado) {
+                res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto} el día ${fecha}.` });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 7: CRUNCHYROLL - ENLACE 
+// ==========================================
+app.post('/buscar-pass-crunchyroll', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'hello@info.crunchyroll.com'],
+            ['HEADER', 'SUBJECT', 'Restablece'], 
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
+            const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+            
+            let enlaceReal = null;
+            let match;
+
+            while ((match = regexTagA.exec(bodyLimpio)) !== null) {
+                let url = match[1];
+                let textoInterno = match[2].toLowerCase().replace(/<[^>]+>/g, '');
+
+                if (textoInterno.includes('haz clic') || textoInterno.includes('click')) {
+                    enlaceReal = url;
+                    break;
+                }
+            }
+
+            if (!enlaceReal) {
+                const regexUPN = /https?:\/\/links\.mail\.crunchyroll\.com\/ls\/click\?upn=[^\s"'><]+/gi;
+                const enlacesUPN = bodyLimpio.match(regexUPN) || [];
+                if (enlacesUPN.length > 0) {
+                    enlacesUPN.sort((a, b) => b.length - a.length);
+                    enlaceReal = enlacesUPN[0];
+                }
+            }
+
+            if (enlaceReal) {
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal, fecha: fechaCorreo });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el enlace." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de Crunchyroll para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 8: HBO MAX - CÓDIGO DE UN SOLO USO
+// ==========================================
+app.post('/buscar-codigo-hbo', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.hbomax.com'],
+            ['HEADER', 'SUBJECT', 'HBO Max'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosReales.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de HBO Max para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 9: HBO MAX - ENLACE DE CONTRASEÑA 
+// ==========================================
+app.post('/buscar-pass-hbo', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.hbomax.com'],
+            ['HEADER', 'SUBJECT', 'restablecer tu contraseña'], 
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
+            const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+            
+            let enlaceReal = null;
+            let match;
+
+            while ((match = regexTagA.exec(bodyLimpio)) !== null) {
+                let url = match[1];
+                let textoInterno = match[2].toUpperCase().replace(/<[^>]+>/g, '');
+
+                if (textoInterno.includes('RESTABLECER')) {
+                    enlaceReal = url;
+                    break;
+                }
+            }
+
+            if (!enlaceReal) {
+                const regexEnlaces = /https?:\/\/[^\s"'><]+/gi;
+                const enlacesEncontrados = bodyLimpio.match(regexEnlaces) || [];
+                const enlacesLimpios = enlacesEncontrados.map(link => link.replace(/"$/, '')).filter(link => 
+                    !link.toLowerCase().includes('.png') && !link.toLowerCase().includes('help')
+                );
+                
+                if (enlacesLimpios.length > 0) {
+                    enlacesLimpios.sort((a, b) => b.length - a.length);
+                    enlaceReal = enlacesLimpios[0];
+                }
+            }
+
+            if (enlaceReal) {
+                res.json({ success: true, tipo: 'enlace', resultado: enlaceReal, fecha: fechaCorreo });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "Se encontró el correo, pero no se halló el botón." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un correo de restablecimiento de HBO Max para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno en el servidor." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 10: SPOTIFY - CÓDIGO DE INICIO
+// ==========================================
+app.post('/buscar-codigo-spotify', async (req, res) => {
+    const { email_usuario } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [
+            ['FROM', 'no-reply@alerts.spotify.com'],
+            ['HEADER', 'SUBJECT', 'Tu código de inicio de sesión de Spotify'],
+            ['TO', email_usuario] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const rawBody = lastMessage.parts[0].body;
+            const fechaCorreo = formatearFecha(lastMessage.attributes.date);
+
+            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
+            
+            const regexCodigo = /\b\d{6}\b/g; 
+            const coincidencias = textoLimpio.match(regexCodigo);
+
+            if (coincidencias) {
+                const codigosLimpios = coincidencias.filter(num => num !== '707070' && num !== '000000');
+                if (codigosLimpios.length > 0) {
+                    res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0], fecha: fechaCorreo });
+                } else {
+                    res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código de Spotify." });
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: "No se detectaron los 6 dígitos del código en el correo." });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontró un código de Spotify para: ${email_usuario}` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor al buscar Spotify." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
+// ==========================================
+// RUTA 11: STORI - VERIFICAR PAGO
+// ==========================================
+app.post('/buscar-pago-stori', async (req, res) => {
+    const { clave_rastreo, monto, fecha } = req.body; 
+    const config = obtenerConfiguracion();
+    let connection;
+
+    try {
+        connection = await imaps.connect(config);
+        await connection.openBox('INBOX');
+
+        // Busca correos del remitente y con "Recibiste" en el asunto
+        const searchCriteria = [
+            ['FROM', 'cuenta@info.storicard.com'],
+            ['HEADER', 'SUBJECT', 'Recibiste']
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            let pagoEncontrado = false;
+            let datosExtraidos = {};
+
+            const limite = Math.max(0, messages.length - 20);
+            
+            for (let i = messages.length - 1; i >= limite; i--) {
+                const rawBody = messages[i].parts[0].body;
+                
+                // Limpiar HTML y saltos de línea
+                let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+                let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
+
+                // Normalizar los datos ingresados desde el Front-End
+                let claveBuscada = clave_rastreo.replace(/\s+/g, '').trim().toUpperCase();
+                let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
+                let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); // ej. "31 MAR 2026"
+
+                // Extracciones mediante expresiones regulares
+                const matchMonto = textoNormalizado.match(/MONTO\s*\$?([0-9,.]+)/);
+                const matchClave = textoNormalizado.match(/CLAVE DE RASTREO\s*([A-Z0-9]+)/);
+                const matchReferencia = textoNormalizado.match(/REFERENCIA NUM.*?RICA\s*([0-9]+)/);
+                
+                // Extraer fecha y hora (ej: "31 MAR 2026 06:28:16")
+                const matchFechaHora = textoNormalizado.match(/(\d{1,2}\s+[A-Z]{3}\s+\d{4})\s+([0-9:]+)/);
+
+                let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
+                let montoCorreo = parseFloat(montoCorreoStr); 
+                
+                let claveCorreo = matchClave ? matchClave[1].trim() : "";
+                let refCorreo = matchReferencia ? matchReferencia[1].trim() : "";
+                
+                let fechaCorreo = matchFechaHora ? matchFechaHora[1].trim() : "Fecha no detectada";
+                let horaCorreo = matchFechaHora ? matchFechaHora[2].trim() : "Hora no detectada";
+
+                let montoEsExacto = (montoCorreo === montoBuscado);
+                
+                // Validar si la clave/referencia ingresada coincide
+                let claveEsExacta = (claveBuscada === claveCorreo || claveBuscada === refCorreo);
+                
+                // Respaldo de seguridad por si el regex falla pero la clave está en el cuerpo
+                if (!claveEsExacta) {
+                    claveEsExacta = textoNormalizado.includes(claveBuscada);
+                }
+
+                // Respaldo de seguridad para la fecha
+                let fechaEsExacta = textoNormalizado.includes(fechaBuscada); 
+
+                // Si todo coincide
+                if (claveEsExacta && montoEsExacto && fechaEsExacta) {
+                    pagoEncontrado = true;
+                    // Determinar qué clave mostrar (le da prioridad a la Clave de Rastreo si vienen las dos)
+                    let claveMostrar = claveCorreo || refCorreo || claveBuscada;
+                    
+                    datosExtraidos = {
+                        clave_rastreo: claveMostrar,
+                        monto: "$" + montoCorreoStr,
+                        fecha: fechaCorreo !== "Fecha no detectada" ? fechaCorreo : fechaBuscada,
+                        hora: horaCorreo
+                    };
+                    break; 
+                }
+            }
+
+            if (pagoEncontrado) {
+                res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de la referencia ${clave_rastreo} por $${monto} el día ${fecha}.` });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontraron notificaciones de Stori en tu bandeja.` });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Error interno del servidor al buscar en Stori." });
+    } finally {
+        if (connection) { connection.end(); }
+    }
+});
+
 function obtenerConfiguracion() {
     return {
         imap: {
@@ -41,498 +698,5 @@ function obtenerConfiguracion() {
     };
 }
 
-// ==========================================
-// RUTAS WEB (HTML)
-// ==========================================
-
-app.post('/buscar-correo', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const searchCriteria = [['FROM', 'disneyplus@trx.mail2.disneyplus.com'], ['HEADER', 'SUBJECT', 'Tu código de acceso único para Disney+'], ['TO', email_usuario]];
-        const messages = await connection.search(searchCriteria, { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            const coincidencias = textoLimpio.match(/\b\d{6}\b/g);
-
-            if (coincidencias) {
-                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
-                } else res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
-            } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
-        } else res.json({ success: false, mensaje: `No se encontró código de Disney para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno del servidor." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-enlace-hogar', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const searchCriteria = [['FROM', 'disneyplus@trx.mail2.disneyplus.com'], ['HEADER', 'SUBJECT', 'Hogar'], ['TO', email_usuario]];
-        const messages = await connection.search(searchCriteria, { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            const coincidencias = textoLimpio.match(/\b\d{6}\b/g);
-
-            if (coincidencias) {
-                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) {
-                    res.json({ success: true, tipo: 'codigo', resultado: [...new Set(codigosReales)].join('   |   '), fecha: fechaCorreo });
-                } else res.json({ success: true, tipo: 'error', resultado: "Solo se encontraron colores." });
-            } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
-        } else res.json({ success: false, mensaje: `No se encontró correo de Hogar para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-enlace-vix', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'vix@vix.com'], ['HEADER', 'SUBJECT', 'contraseña'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            const enlacesLimpios = (bodyLimpio.match(/https?:\/\/[^\s"'><]+/gi) || []).map(l => l.replace(/"$/, '')).filter(l => l.toLowerCase().includes('vix') && !l.toLowerCase().includes('.png') && !l.toLowerCase().includes('help'));
-
-            if (enlacesLimpios.length > 0) {
-                enlacesLimpios.sort((a, b) => b.length - a.length);
-                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0], fecha: fechaCorreo });
-            } else res.json({ success: true, tipo: 'error', resultado: "Sin enlaces válidos." });
-        } else res.json({ success: false, mensaje: `No se encontró Vix para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-codigo-netflix', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'info@account.netflix.com'], ['HEADER', 'SUBJECT', 'Netflix: Tu código de inicio de sesión'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            const coincidencias = textoLimpio.match(/\b\d(?:\s*\d){3}\b/g);
-
-            if (coincidencias) {
-                res.json({ success: true, tipo: 'codigo', resultado: coincidencias[0].replace(/\s+/g, ''), fecha: fechaCorreo });
-            } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 4 dígitos." });
-        } else res.json({ success: false, mensaje: `No se encontró código de Netflix para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-pass-netflix', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'info@account.netflix.com'], ['HEADER', 'SUBJECT', 'restablecimiento'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            const enlacesLimpios = (bodyLimpio.match(/https?:\/\/[^\s"'><]+/gi) || []).map(l => l.replace(/"$/, '')).filter(l => l.toLowerCase().includes('netflix') && !l.toLowerCase().includes('.png') && !l.toLowerCase().includes('help'));
-
-            if (enlacesLimpios.length > 0) {
-                enlacesLimpios.sort((a, b) => b.length - a.length);
-                res.json({ success: true, tipo: 'enlace', resultado: enlacesLimpios[0], fecha: fechaCorreo });
-            } else res.json({ success: true, tipo: 'error', resultado: "Sin enlaces válidos." });
-        } else res.json({ success: false, mensaje: `No se encontró restablecimiento de Netflix para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-pago-nu', async (req, res) => {
-    const { nombre, monto, fecha } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['HEADER', 'SUBJECT', 'transferencia']], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            let pagoEncontrado = false; let datosExtraidos = {};
-            const limite = Math.max(0, messages.length - 20);
-            for (let i = messages.length - 1; i >= limite; i--) {
-                const rawBody = messages[i].parts[0].body;
-                let textoNormalizado = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=').replace(/\s+/g, ' ').toUpperCase(); 
-                
-                let nomB = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
-                let monB = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
-                let fechB = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
-
-                const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
-                const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
-                const matchFecha = textoNormalizado.match(/FECHA:\s*([0-9A-Z\s]+?)(?=\s*HORA:|$)/);
-                const matchHora = textoNormalizado.match(/HORA:\s*([0-9:]+)/);
-
-                let nC = matchName ? matchName[1].trim() : "";
-                let mC = parseFloat(matchMonto ? matchMonto[1].replace(/,/g, '') : "0"); 
-                let fC = matchFecha ? matchFecha[1].trim() : "";
-                let hC = matchHora ? matchHora[1].trim() : "No detectada";
-
-                if ((nC === nomB) && (mC === monB) && textoNormalizado.includes("FECHA: " + fechB)) {
-                    pagoEncontrado = true;
-                    datosExtraidos = { nombre: nC, monto: "$" + mC, fecha: fC, hora: hC };
-                    break; 
-                }
-            }
-            if (pagoEncontrado) res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
-            else res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito de ${nombre} por $${monto}.` });
-        } else res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu.` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-pass-crunchyroll', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'hello@info.crunchyroll.com'], ['HEADER', 'SUBJECT', 'Restablece'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            let enlaceReal = null;
-            
-            const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-            let match;
-            while ((match = regexTagA.exec(bodyLimpio)) !== null) {
-                if (match[2].toLowerCase().replace(/<[^>]+>/g, '').includes('clic')) { enlaceReal = match[1]; break; }
-            }
-            if (!enlaceReal) {
-                const enlacesUPN = bodyLimpio.match(/https?:\/\/links\.mail\.crunchyroll\.com\/ls\/click\?upn=[^\s"'><]+/gi) || [];
-                if (enlacesUPN.length > 0) enlaceReal = enlacesUPN.sort((a, b) => b.length - a.length)[0];
-            }
-            if (enlaceReal) res.json({ success: true, tipo: 'enlace', resultado: enlaceReal, fecha: fechaCorreo });
-            else res.json({ success: true, tipo: 'error', resultado: "No se halló el enlace." });
-        } else res.json({ success: false, mensaje: `No se encontró Crunchyroll para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-codigo-hbo', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'no-reply@alerts.hbomax.com'], ['HEADER', 'SUBJECT', 'HBO Max'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            const coincidencias = textoLimpio.match(/\b\d{6}\b/g);
-
-            if (coincidencias) {
-                const codigosReales = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosReales.length > 0) res.json({ success: true, tipo: 'codigo', resultado: codigosReales[0], fecha: fechaCorreo });
-                else res.json({ success: true, tipo: 'error', resultado: "Solo colores." });
-            } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
-        } else res.json({ success: false, mensaje: `No se encontró código de Max para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-pass-hbo', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'no-reply@alerts.hbomax.com'], ['HEADER', 'SUBJECT', 'restablecer tu contraseña'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let bodyLimpio = rawBody.replace(/=3D/gi, '=').replace(/=\r?\n/g, '');
-            let enlaceReal = null;
-            
-            const regexTagA = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-            let match;
-            while ((match = regexTagA.exec(bodyLimpio)) !== null) {
-                if (match[2].toUpperCase().includes('RESTABLECER')) { enlaceReal = match[1]; break; }
-            }
-            if (!enlaceReal) {
-                const enlacesLimpios = (bodyLimpio.match(/https?:\/\/[^\s"'><]+/gi) || []).map(l => l.replace(/"$/, '')).filter(l => !l.toLowerCase().includes('.png') && !l.toLowerCase().includes('help'));
-                if (enlacesLimpios.length > 0) enlaceReal = enlacesLimpios.sort((a, b) => b.length - a.length)[0];
-            }
-            if (enlaceReal) res.json({ success: true, tipo: 'enlace', resultado: enlaceReal, fecha: fechaCorreo });
-            else res.json({ success: true, tipo: 'error', resultado: "No se halló el botón." });
-        } else res.json({ success: false, mensaje: `No se encontró restablecimiento de Max para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-app.post('/buscar-codigo-spotify', async (req, res) => {
-    const { email_usuario } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-    try {
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
-        const messages = await connection.search([['FROM', 'no-reply@alerts.spotify.com'], ['HEADER', 'SUBJECT', 'Tu código de inicio de sesión de Spotify'], ['TO', email_usuario]], { bodies: ['TEXT'], markSeen: false });
-
-        if (messages.length > 0) {
-            const rawBody = messages[messages.length - 1].parts[0].body;
-            const fechaCorreo = formatearFecha(messages[messages.length - 1].attributes.date);
-            let textoLimpio = rawBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=[0-9A-F]{2}/gi, ' ');
-            const coincidencias = textoLimpio.match(/\b\d{6}\b/g);
-
-            if (coincidencias) {
-                const codigosLimpios = coincidencias.filter(num => num !== '707070' && num !== '000000');
-                if (codigosLimpios.length > 0) res.json({ success: true, tipo: 'codigo', resultado: codigosLimpios[0], fecha: fechaCorreo });
-                else res.json({ success: true, tipo: 'error', resultado: "No se pudo extraer el código." });
-            } else res.json({ success: true, tipo: 'error', resultado: "No se detectaron 6 dígitos." });
-        } else res.json({ success: false, mensaje: `No se encontró código de Spotify para: ${email_usuario}` });
-    } catch (error) { res.status(500).json({ success: false, error: "Error interno." });
-    } finally { if (connection) connection.end(); }
-});
-
-// ==========================================
-// EL BOT DE WHATSAPP
-// ==========================================
-
-async function iniciarBotWhatsApp() {
-    // Usamos la carpeta limpia
-    const { state, saveCreds } = await useMultiFileAuthState('/data/botcito_zamora_2');
-    
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`📡 Usando WhatsApp v${version.join('.')}`);
-
-    const sock = makeWASocket({
-        version,
-        auth: state,
-        printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
-        syncFullHistory: false, 
-        connectTimeoutMs: 60000 
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-
-    if (!sock.authState.creds.registered) {
-        const NUMERO_DEL_BOT = "5215664140028"; // Tu número del chip del bot
-        
-        if(NUMERO_DEL_BOT === "") {
-            console.log("❌ ERROR: Olvidaste poner tu número de teléfono.");
-        } else {
-            setTimeout(async () => {
-                try {
-                    let codigo = await sock.requestPairingCode(NUMERO_DEL_BOT);
-                    codigo = codigo?.match(/.{1,4}/g)?.join("-") || codigo;
-                    console.log('\n======================================================');
-                    console.log('📱 VINCULA TU WHATSAPP CON ESTE CÓDIGO: ' + codigo);
-                    console.log('======================================================\n');
-                } catch (error) {
-                    console.log('❌ Error generando el código. Revisa tu número:', error);
-                }
-            }, 3000); 
-        }
-    }
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
-        
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('⚠️ Conexión cerrada. Reconectando...', shouldReconnect);
-            if (shouldReconnect) {
-                iniciarBotWhatsApp();
-            }
-        } else if (connection === 'open') {
-            console.log('✅ ¡Bot de WhatsApp Conectado y Listo!');
-        }
-    });
-
-    sock.ev.on('messages.upsert', async m => {
-        const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-
-        const textoOriginal = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        if (!textoOriginal) return;
-
-        const comandoBruto = textoOriginal.trim().split(/\s+/)[0].toLowerCase();
-        const jid = msg.key.remoteJid; 
-
-                       // =======================================================
-        // TU NÚMERO DE ADMINISTRADOR
-        // =======================================================
-        const ADMIN_NUMBER = "243563988291766"; 
-        const isAdmin = jid.includes(ADMIN_NUMBER);
-
-        // COMANDO ESPÍA (Para saber cómo te lee WhatsApp)
-        if (comandoBruto === '!miid') {
-            return await sock.sendMessage(jid, { text: `🤖 Hola, WhatsApp me dice que tu número interno exacto es:\n*${jid}*` });
-        }
-
-        // --- MINI BASE DE DATOS ---
-        const dbFile = '/data/usuarios.json';
-        if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify({}));
-        let db = JSON.parse(fs.readFileSync(dbFile));
-
-                // ==========================================
-        // COMANDOS DE ADMINISTRADOR
-        // ==========================================
-        
-        // COMANDO: !agregar
-        if (comandoBruto.startsWith('!agregar/')) {
-            if (!isAdmin) return await sock.sendMessage(jid, { text: "❌ No tienes permisos de administrador." });
-            
-            const partes = textoOriginal.trim().split('/'); 
-            if (partes.length === 3) {
-                const numNuevo = partes[1]; // <-- ¡AQUÍ ESTÁ EL CAMBIO! Ya no pegamos terminaciones
-                const dias = parseInt(partes[2]);
-                const vencimiento = new Date();
-                vencimiento.setDate(vencimiento.getDate() + dias);
-                db[numNuevo] = vencimiento.toISOString();
-                fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
-                return await sock.sendMessage(jid, { text: `✅ *CLIENTE REGISTRADO*\n📱 ID: ${partes[1]}\n⏳ Días: ${dias}\n📅 Vence el: ${vencimiento.toLocaleDateString('es-MX')}` });
-            } else {
-                return await sock.sendMessage(jid, { text: "⚠️ Formato incorrecto. Usa: !agregar/numero/dias" });
-            }
-        }
-
-        // COMANDO: !quitar
-        if (comandoBruto.startsWith('!quitar/')) {
-            if (!isAdmin) return;
-            const partes = textoOriginal.trim().split('/');
-            if (partes.length === 2) {
-                const numQuitar = partes[1]; // <-- CAMBIO AQUÍ TAMBIÉN
-                if (db[numQuitar]) {
-                    delete db[numQuitar];
-                    fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
-                    return await sock.sendMessage(jid, { text: `🗑️ *CLIENTE ELIMINADO*\nEl ID ${partes[1]} ya no tiene acceso.` });
-                } else {
-                    return await sock.sendMessage(jid, { text: `⚠️ El cliente ${partes[1]} no existe en tu base de datos.` });
-                }
-            } else {
-                return await sock.sendMessage(jid, { text: "⚠️ Formato incorrecto. Usa: !quitar/numero" });
-            }
-        }
-
-        // COMANDO SECRETO: !limpiardb
-        if (comandoBruto === '!limpiardb') {
-            if (!isAdmin) return; 
-            db = {}; 
-            fs.writeFileSync(dbFile, JSON.stringify(db, null, 2)); 
-            return await sock.sendMessage(jid, { text: "🚨 *SISTEMA REINICIADO* 🚨\nLa base de datos ha sido vaciada por completo. Ningún cliente tiene acceso en este momento." });
-        }
-
-        // COMANDO DE LIMPIEZA: !borrarbasura
-        if (comandoBruto === '!borrarbasura') {
-            if (!isAdmin) return; 
-            const carpetaVieja = '/data/sesion_limpia_01';
-            if (fs.existsSync(carpetaVieja)) {
-                fs.rmSync(carpetaVieja, { recursive: true, force: true });
-                return await sock.sendMessage(jid, { text: "🧹 *BASURA ELIMINADA*\nLa sesión vieja ha sido borrada." });
-            } else {
-                return await sock.sendMessage(jid, { text: "👍 *TODO LIMPIO*\nNo se encontró ninguna sesión vieja." });
-            }
-        }
-
-        // ==========================================
-        // VERIFICADOR DE ACCESO (Para los clientes)
-        // ==========================================
-        if (comandoBruto.startsWith('!') && !isAdmin) {
-            const numeroCliente = jid.split('@')[0]; // <-- EXTRAE SOLO LOS NÚMEROS
-            const fechaVencimiento = db[numeroCliente] ? new Date(db[numeroCliente]) : null;
-            const ahora = new Date();
-
-            if (!fechaVencimiento) {
-                return await sock.sendMessage(jid, { text: "❌ *ACCESO DENEGADO*\nNo estás registrado en el sistema. Contacta a soporte para adquirir tu membresía." });
-            } else if (ahora > fechaVencimiento) {
-                return await sock.sendMessage(jid, { text: "❌ *MEMBRESÍA VENCIDA*\nTu tiempo de acceso ha caducado. Por favor, renueva tu suscripción." });
-            }
-        }
-
-
-        // ==========================================
-        // COMANDOS DEL BOT
-        // ==========================================
-        const matchCorreo = textoOriginal.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/);
-        const emailLimpio = matchCorreo ? matchCorreo[1] : null;
-
-        async function buscarYResponder(ruta, plataforma, email) {
-            await sock.sendMessage(jid, { text: `⏳ Buscando en *${plataforma}* para:\n${email}...` });
-            try {
-                const response = await fetch(`http://127.0.0.1:${PORT}${ruta}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email_usuario: email })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    if (data.tipo === 'codigo') {
-                        await sock.sendMessage(jid, { text: `✅ *CÓDIGO:* ${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
-                    } else if (data.tipo === 'enlace') {
-                        await sock.sendMessage(jid, { text: `✅ *ENLACE ENCONTRADO:*\n${data.resultado}\n🕒 *Recibido:* ${data.fecha}` });
-                    } else if (data.tipo === 'pago') {
-                        await sock.sendMessage(jid, { text: `✅ *PAGO ENCONTRADO*\nNombre: ${data.datos.nombre}\nMonto: ${data.datos.monto}\nFecha: ${data.datos.fecha}` });
-                    }
-                } else {
-                    await sock.sendMessage(jid, { text: `❌ *No encontrado:*\n${data.mensaje || data.error}` });
-                }
-            } catch (error) {
-                await sock.sendMessage(jid, { text: `❌ Error interno conectando con el panel.` });
-            }
-        }
-
-        if (comandoBruto === '!ayuda' || comandoBruto === '!reglas') {
-            const mensajeAyuda = `🤖 *¡Hola! Soy el Bot Automático de Soporte.* 🤖\n\nPara pedir un código o enlace, escríbeme el comando de la plataforma seguido del correo de tu cuenta.\n\n👉 *Ejemplo:* \`!netflix tucorreo@gmail.com\`\n\n📌 *COMANDOS DISPONIBLES:*\n📺 *Netflix:* !netflix | !netflixpass\n🏰 *Disney:* !disney | !disneyhogar\n🎵 *Spotify:* !spotify\n🍿 *HBO Max:* !hbo | !hbopass\n⚽ *Vix:* !vixpass\n🍥 *Crunchyroll:* !crunchypass`;
-            await sock.sendMessage(jid, { text: mensajeAyuda });
-        }
-        else if (comandoBruto === '!netflix' && emailLimpio) await buscarYResponder('/buscar-codigo-netflix', 'Netflix (Acceso)', emailLimpio);
-        else if (comandoBruto === '!netflixpass' && emailLimpio) await buscarYResponder('/buscar-pass-netflix', 'Netflix (Contraseña)', emailLimpio);
-        else if (comandoBruto === '!disney' && emailLimpio) await buscarYResponder('/buscar-correo', 'Disney (Acceso)', emailLimpio);
-        else if (comandoBruto === '!disneyhogar' && emailLimpio) await buscarYResponder('/buscar-enlace-hogar', 'Disney (Hogar)', emailLimpio);
-        else if (comandoBruto === '!spotify' && emailLimpio) await buscarYResponder('/buscar-codigo-spotify', 'Spotify', emailLimpio);
-        else if (comandoBruto === '!hbo' && emailLimpio) await buscarYResponder('/buscar-codigo-hbo', 'HBO Max (Acceso)', emailLimpio);
-        else if (comandoBruto === '!hbopass' && emailLimpio) await buscarYResponder('/buscar-pass-hbo', 'HBO Max (Contraseña)', emailLimpio);
-        else if (comandoBruto === '!vixpass' && emailLimpio) await buscarYResponder('/buscar-enlace-vix', 'ViX (Contraseña)', emailLimpio);
-        else if (comandoBruto === '!crunchypass' && emailLimpio) await buscarYResponder('/buscar-pass-crunchyroll', 'Crunchyroll (Contraseña)', emailLimpio);
-    });
-}
-
-app.listen(PORT, () => { 
-    console.log(`🚀 Servidor web corriendo en el puerto ${PORT}`); 
-    iniciarBotWhatsApp(); 
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
