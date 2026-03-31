@@ -585,10 +585,10 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 11: STORI - VERIFICAR PAGO
+// RUTA 11: STORI - VERIFICAR PAGO (SIN FECHA)
 // ==========================================
 app.post('/buscar-pago-stori', async (req, res) => {
-    const { clave_rastreo, monto, fecha } = req.body; 
+    const { clave_rastreo, monto } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
@@ -614,22 +614,20 @@ app.post('/buscar-pago-stori', async (req, res) => {
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
-                // Limpiar HTML y saltos de línea
+                // Limpiar HTML y saltos de línea para facilitar la lectura de Regex
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
                 // Normalizar los datos ingresados desde el Front-End
                 let claveBuscada = clave_rastreo.replace(/\s+/g, '').trim().toUpperCase();
                 let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
-                let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); // ej. "31 MAR 2026"
 
-                // Extracciones mediante expresiones regulares
-                const matchMonto = textoNormalizado.match(/MONTO\s*\$?([0-9,.]+)/);
+                // Extracciones mediante expresiones regulares más tolerantes
+                const matchMonto = textoNormalizado.match(/MONTO\s*\$?\s*([0-9,.]+)/);
                 const matchClave = textoNormalizado.match(/CLAVE DE RASTREO\s*([A-Z0-9]+)/);
-                const matchReferencia = textoNormalizado.match(/REFERENCIA NUM.*?RICA\s*([0-9]+)/);
                 
-                // Extraer fecha y hora (ej: "31 MAR 2026 06:28:16")
-                const matchFechaHora = textoNormalizado.match(/(\d{1,2}\s+[A-Z]{3}\s+\d{4})\s+([0-9:]+)/);
+                // Busca variaciones de acentos en "NUMÉRICA"
+                const matchReferencia = textoNormalizado.match(/REFERENCIA NUM[A-Z]*RICA\s*([0-9]+)/);
 
                 let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
                 let montoCorreo = parseFloat(montoCorreoStr); 
@@ -637,33 +635,28 @@ app.post('/buscar-pago-stori', async (req, res) => {
                 let claveCorreo = matchClave ? matchClave[1].trim() : "";
                 let refCorreo = matchReferencia ? matchReferencia[1].trim() : "";
                 
-                let fechaCorreo = matchFechaHora ? matchFechaHora[1].trim() : "Fecha no detectada";
-                let horaCorreo = matchFechaHora ? matchFechaHora[2].trim() : "Hora no detectada";
-
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 
-                // Validar si la clave/referencia ingresada coincide
+                // Validar si la clave o referencia ingresada coincide con lo extraído del correo
                 let claveEsExacta = (claveBuscada === claveCorreo || claveBuscada === refCorreo);
                 
-                // Respaldo de seguridad por si el regex falla pero la clave está en el cuerpo
+                // Respaldo de seguridad por si la extracción falla pero la clave existe en todo el bloque de texto
                 if (!claveEsExacta) {
                     claveEsExacta = textoNormalizado.includes(claveBuscada);
                 }
 
-                // Respaldo de seguridad para la fecha
-                let fechaEsExacta = textoNormalizado.includes(fechaBuscada); 
-
-                // Si todo coincide
-                if (claveEsExacta && montoEsExacto && fechaEsExacta) {
+                // Si coinciden clave y monto (ya no validamos fecha)
+                if (claveEsExacta && montoEsExacto) {
                     pagoEncontrado = true;
-                    // Determinar qué clave mostrar (le da prioridad a la Clave de Rastreo si vienen las dos)
+                    // Mostrará la fecha real en la que llegó el correo al sistema para llevar un control visual
+                    const fechaCorreoRecibido = formatearFecha(messages[i].attributes.date); 
+                    
                     let claveMostrar = claveCorreo || refCorreo || claveBuscada;
                     
                     datosExtraidos = {
                         clave_rastreo: claveMostrar,
                         monto: "$" + montoCorreoStr,
-                        fecha: fechaCorreo !== "Fecha no detectada" ? fechaCorreo : fechaBuscada,
-                        hora: horaCorreo
+                        fecha_recibido: fechaCorreoRecibido
                     };
                     break; 
                 }
@@ -672,7 +665,7 @@ app.post('/buscar-pago-stori', async (req, res) => {
             if (pagoEncontrado) {
                 res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de la referencia ${clave_rastreo} por $${monto} el día ${fecha}.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de la referencia ${clave_rastreo} por $${monto}.` });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Stori en tu bandeja.` });
