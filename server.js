@@ -585,7 +585,7 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 11: STORI - VERIFICAR PAGO (SIN FECHA)
+// RUTA 11: STORI - VERIFICAR PAGO STRICTO
 // ==========================================
 app.post('/buscar-pago-stori', async (req, res) => {
     const { clave_rastreo, monto } = req.body; 
@@ -596,7 +596,7 @@ app.post('/buscar-pago-stori', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // Busca correos del remitente y con "Recibiste" en el asunto
+        // Busca correos del remitente
         const searchCriteria = [
             ['FROM', 'cuenta@info.storicard.com'],
             ['HEADER', 'SUBJECT', 'Recibiste']
@@ -614,49 +614,35 @@ app.post('/buscar-pago-stori', async (req, res) => {
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 
-                // Limpiar HTML y saltos de línea para facilitar la lectura de Regex
+                // Normalizamos el texto quitando etiquetas HTML y saltos de línea
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
-                // Normalizar los datos ingresados desde el Front-End
+                // TRUCO INFALIBLE: Quitamos todos los espacios en blanco del texto del correo
+                // Esto evita que etiquetas HTML que se volvieron espacios rompan la clave.
+                let textoSinEspacios = textoNormalizado.replace(/\s+/g, '');
+
+                // Datos ingresados en el Panel
                 let claveBuscada = clave_rastreo.replace(/\s+/g, '').trim().toUpperCase();
                 let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
 
-                // Extracciones mediante expresiones regulares más tolerantes
-                const matchMonto = textoNormalizado.match(/MONTO\s*\$?\s*([0-9,.]+)/);
-                const matchClave = textoNormalizado.match(/CLAVE DE RASTREO\s*([A-Z0-9]+)/);
-                
-                // Busca variaciones de acentos en "NUMÉRICA"
-                const matchReferencia = textoNormalizado.match(/REFERENCIA NUM[A-Z]*RICA\s*([0-9]+)/);
-
+                // Extracción del monto del correo (buscando los números que sigan a la palabra MONTO)
+                const matchMonto = textoNormalizado.match(/MONTO[^0-9]*([0-9,.]+)/);
                 let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
                 let montoCorreo = parseFloat(montoCorreoStr); 
                 
-                let claveCorreo = matchClave ? matchClave[1].trim() : "";
-                let refCorreo = matchReferencia ? matchReferencia[1].trim() : "";
-                
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 
-                // Validar si la clave o referencia ingresada coincide con lo extraído del correo
-                let claveEsExacta = (claveBuscada === claveCorreo || claveBuscada === refCorreo);
-                
-                // Respaldo de seguridad por si la extracción falla pero la clave existe en todo el bloque de texto
-                if (!claveEsExacta) {
-                    claveEsExacta = textoNormalizado.includes(claveBuscada);
-                }
+                // Validación estricta y única de la Clave de Rastreo en el bloque sin espacios
+                let claveEsExacta = textoSinEspacios.includes(claveBuscada);
 
-                // Si coinciden clave y monto (ya no validamos fecha)
                 if (claveEsExacta && montoEsExacto) {
                     pagoEncontrado = true;
-                    // Mostrará la fecha real en la que llegó el correo al sistema para llevar un control visual
-                    const fechaCorreoRecibido = formatearFecha(messages[i].attributes.date); 
-                    
-                    let claveMostrar = claveCorreo || refCorreo || claveBuscada;
                     
                     datosExtraidos = {
-                        clave_rastreo: claveMostrar,
+                        clave_rastreo: claveBuscada,
                         monto: "$" + montoCorreoStr,
-                        fecha_recibido: fechaCorreoRecibido
+                        fecha_recibido: formatearFecha(messages[i].attributes.date)
                     };
                     break; 
                 }
@@ -665,7 +651,7 @@ app.post('/buscar-pago-stori', async (req, res) => {
             if (pagoEncontrado) {
                 res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de la referencia ${clave_rastreo} por $${monto}.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de la clave de rastreo ${clave_rastreo} por $${monto}.` });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Stori en tu bandeja.` });
