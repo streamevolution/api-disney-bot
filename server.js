@@ -672,9 +672,75 @@ app.post('/buscar-pago-stori', async (req, res) => {
             }
 
             if (pagoEncontrado) {
-                res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+                // ==========================================
+                // NUEVO CANDADO DE SEGURIDAD NIVEL BANCO
+                // ==========================================
+                const uid = req.user.uid; 
+                const emailUser = req.user.email;
+                const db = admin.firestore();
+                const clave = datosExtraidos.clave_rastreo;
+                
+                // Extraemos el monto REAL del correo, ignorando lo que el usuario pida
+                const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
+
+                try {
+                    // Ejecutamos la Transacción directamente en el servidor seguro
+                    await db.runTransaction(async (t) => {
+                        const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
+                        const huellaDoc = await t.get(huellaRef);
+                        
+                        // 1. Verificamos si alguien ya cobró este folio antes
+                        if (huellaDoc.exists) {
+                            throw new Error("DUPLICADO");
+                        }
+                        
+                        const userRef = db.collection('usuarios').doc(uid);
+                        const userDoc = await t.get(userRef);
+                        let saldoActual = 0;
+                        if (userDoc.exists) saldoActual = userDoc.data().saldo || 0;
+
+                        const nuevoPedidoRef = db.collection('solicitudes_servicios').doc();
+
+                        // 2. Creamos la huella para que nadie más la use
+                        t.set(huellaRef, {
+                            banco: "NU",
+                            clave_rastreo: clave,
+                            fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
+                            monto: montoNum,
+                            usuarioAcreditado: uid,
+                            emailAcreditado: emailUser
+                        });
+
+                        // 3. Sumamos el saldo al usuario
+                        t.update(userRef, { saldo: saldoActual + montoNum });
+
+                        // 4. Guardamos el recibo en su historial
+                        t.set(nuevoPedidoRef, {
+                            usuarioId: uid,
+                            userId: uid,
+                            userEmail: emailUser,
+                            servicioNombre: "Recarga de Saldo - NU",
+                            costo: montoNum,
+                            estado: "Completado",
+                            status: "completado",
+                            fecha: new Date().toLocaleString('es-MX'),
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                            tipo: "RECARGA",
+                            clave_rastreo: clave
+                        });
+                    });
+                    
+                    // Si todo salió bien, le avisamos a la página
+                    res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+                } catch (error) {
+                    if (error.message === "DUPLICADO") {
+                        res.json({ success: false, tipo: 'duplicado', error: "Esta transferencia ya fue cobrada y registrada anteriormente. No se puede cobrar dos veces." });
+                    } else {
+                        res.json({ success: false, error: "Error interno en base de datos: " + error.message });
+                    }
+                }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito de la clave ${clave_rastreo} del banco ${banco} por $${monto}.` });
+                res.json({ success: false, tipo: 'error', error: `No se encontró depósito de la clave ${clave_rastreo} por ${monto}.` });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Stori en tu bandeja.` });
