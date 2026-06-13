@@ -889,5 +889,116 @@ app.post('/procesar-compra', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTA 12: RECOMPENSAS DE JERARQUÍA AUTOMÁTICAS
+// ==========================================
+app.post('/recompensa-jerarquia', async (req, res) => {
+    const { uid, email, nivel, recompensa, nombreNivel } = req.body;
+    try {
+        const db = admin.firestore();
+        const userRef = db.collection('usuarios').doc(uid);
+        const pedidoRef = db.collection('solicitudes_servicios').doc();
+
+        await db.runTransaction(async (t) => {
+            const userDoc = await t.get(userRef);
+            if (!userDoc.exists) throw new Error("Usuario no encontrado");
+
+            let data = userDoc.data();
+            let jerarquiaActual = data.jerarquiaCobrada || 0;
+            
+            if (nivel <= jerarquiaActual) {
+                throw new Error("Esta recompensa ya fue cobrada.");
+            }
+
+            let saldoActual = data.saldo || 0;
+            
+            t.update(userRef, { 
+                saldo: saldoActual + parseFloat(recompensa),
+                jerarquiaCobrada: nivel 
+            });
+
+            t.set(pedidoRef, {
+                servicioNombre: "Recompensa de Rango",
+                usuarioEmail: email,
+                usuarioId: uid,
+                userId: uid,
+                costo: parseFloat(recompensa), 
+                precio: parseFloat(recompensa), 
+                total: parseFloat(recompensa),
+                tipo: "FINANZAS", 
+                ecosistema: "tramites",
+                fecha: new Date().toLocaleString('es-MX'),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                estado: "Completado", 
+                status: "completado",
+                datosProporcionados: { "Rango Alcanzado": nombreNivel, "Recompensa Acreditada": "$" + recompensa + " MXN" }
+            });
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// ==========================================
+// RUTA 13: COBRO Y GENERACIÓN DE REFERIDOS
+// ==========================================
+app.post('/cobrar-referido', async (req, res) => {
+    const { uid, email, costoReferido } = req.body; 
+    try {
+        const db = admin.firestore();
+        const userRef = db.collection('usuarios').doc(uid);
+        const enlaceRef = db.collection('enlaces_referidos').doc();
+        const pedidoRef = db.collection('solicitudes_servicios').doc();
+        
+        let codigoGenerado = "";
+
+        await db.runTransaction(async (t) => {
+            const userDoc = await t.get(userRef);
+            if (!userDoc.exists) throw new Error("Usuario no encontrado");
+            
+            let saldoActual = userDoc.data().saldo || 0;
+            
+            if (saldoActual < costoReferido) {
+                throw new Error("SALDO_INSUFICIENTE");
+            }
+
+            codigoGenerado = "REF-" + Math.random().toString(36).substring(2, 8).toUpperCase() + "-" + uid.substring(0, 4).toUpperCase();
+
+            t.update(userRef, { saldo: saldoActual - parseFloat(costoReferido) });
+
+            t.set(enlaceRef, {
+                codigo: codigoGenerado,
+                creadorId: uid,
+                creadorEmail: email,
+                activo: true,
+                usos: 0,
+                fechaCreacion: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            t.set(pedidoRef, {
+                servicioNombre: "Generación Enlace Referido",
+                usuarioEmail: email,
+                usuarioId: uid,
+                userId: uid,
+                costo: parseFloat(costoReferido),
+                precio: parseFloat(costoReferido),
+                total: parseFloat(costoReferido),
+                tipo: "FINANZAS",
+                ecosistema: "tramites",
+                fecha: new Date().toLocaleString('es-MX'),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                estado: "Completado",
+                status: "completado",
+                datosProporcionados: { "Código Generado": codigoGenerado }
+            });
+        });
+
+        res.json({ success: true, codigo: codigoGenerado });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
