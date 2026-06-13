@@ -2,6 +2,19 @@ require('dotenv').config();
 const express = require('express');
 const imaps = require('imap-simple');
 const cors = require('cors');
+const admin = require('firebase-admin');
+
+// 1. INICIALIZAR FIREBASE ADMIN CON SEGURIDAD
+if (!admin.apps.length) {
+    admin.initializeApp({
+        credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
+        })
+    });
+}
+const db = admin.firestore();
 
 const app = express();
 app.use(cors());
@@ -769,6 +782,112 @@ function obtenerConfiguracion() {
         }
     };
 }
+
+// ==========================================
+// RUTA SEGURA: PROCESAR COMPRA (ANTI-F12)
+// ==========================================
+app.post('/procesar-compra', async (req, res) => {
+    const { uid, email, servicioId, ecosistema, datosLlenos, esAutoEntrega, cuentaId, cuentaInfo, precioCobrarFront, precioOriginal, esGratisVIP, tituloServicio, categoria, estadoFinal, respuestaAdministrador } = req.body;
+    
+    try {
+        const userRef = db.collection('usuarios').doc(uid);
+        const serviceRef = db.collection(ecosistema).doc(servicioId);
+        const newOrderRef = db.collection('solicitudes_servicios').doc();
+        let cuentaRef = cuentaId ? db.collection('cuentas_streaming').doc(cuentaId) : null;
+
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            const serviceDoc = await transaction.get(serviceRef);
+            const cuentaCheck = cuentaRef ? await transaction.get(cuentaRef) : null;
+
+            if (!userDoc.exists) throw new Error("USER_NOT_FOUND");
+            if (!serviceDoc.exists) throw new Error("OUT_OF_STOCK"); 
+
+            // EL ESCUDO ANTI-F12: Calculamos el precio real DESDE EL SERVIDOR, ignorando la consola de Chrome
+            let precioRealDB = parseFloat(serviceDoc.data().price.replace(/[^0-9.-]+/g,"")) || 0;
+            let precioFinalServidor = precioRealDB;
+            let userData = userDoc.data();
+
+            // Verificamos VIP real directamente en la base de datos
+            if (userData.membresiaActiva && (userData.membresiaVence === 'permanente' || Date.now() < userData.membresiaVence)) {
+                const configVIP = await transaction.get(db.collection('configuracion').doc('membresias_vip'));
+                if (configVIP.exists && configVIP.data().lista && configVIP.data().lista.length > 0) {
+                    let vipParams = configVIP.data().lista[0];
+                    if (esGratisVIP && vipParams.docsGratis) {
+                        let regalo = vipParams.docsGratis.find(g => g.id === servicioId);
+                        let usosActuales = userData.usosGratisVIP ? (userData.usosGratisVIP[servicioId] || 0) : 0;
+                        if (regalo && usosActuales < regalo.cantidad) {
+                            precioFinalServidor = 0;
+                        }
+                    } else if (vipParams.preciosVip) {
+                        let desc = vipParams.preciosVip.find(p => p.id === servicioId);
+                        if (desc && desc.precioVip < precioFinalServidor) {
+                            precioFinalServidor = desc.precioVip;
+                        }
+                    }
+                }
+            }
+
+            // BLOQUEO DEFINITIVO: Si el usuario manipuló el precio en F12, se bloquea la transacción
+            if (precioCobrarFront < precioFinalServidor) {
+                throw new Error("HACKING_DETECTED");
+            }
+
+            const saldoActual = userData.saldo || 0;
+            if (saldoActual < precioFinalServidor) throw new Error("INSUFFICIENT_FUNDS");
+
+            if (esAutoEntrega) {
+                let stockActual = serviceDoc.data().stock || 0;
+                if (stockActual <= 0) throw new Error("OUT_OF_STOCK");
+                if (cuentaCheck && cuentaCheck.data().estado !== 'disponible') throw new Error("ACCOUNT_TAKEN");
+
+                transaction.update(serviceRef, { stock: stockActual - 1 });
+                if (cuentaRef) {
+                    transaction.update(cuentaRef, { estado: 'vendida', comprador: uid, fechaVenta: admin.firestore.FieldValue.serverTimestamp() });
+                }
+            }
+
+            let updateData = { saldo: saldoActual - precioFinalServidor };
+            if (precioFinalServidor === 0 && esGratisVIP) {
+                let usos = userData.usosGratisVIP || {};
+                usos[servicioId] = (usos[servicioId] || 0) + 1;
+                updateData.usosGratisVIP = usos;
+            }
+            transaction.update(userRef, updateData);
+
+            let estadoFinalReal = esAutoEntrega ? "Completado" : estadoFinal;
+
+            let ordenData = {
+                costo: precioFinalServidor, precio: precioFinalServidor, total: precioFinalServidor,
+                precioOriginal: precioRealDB,
+                esGratisVIP: precioFinalServidor === 0 && esGratisVIP,
+                esDescuentoVIP: precioFinalServidor > 0 && precioFinalServidor < precioRealDB,
+                estado: estadoFinalReal, tipo: categoria, servicio: tituloServicio,
+                fecha: new Date().toLocaleString('es-MX'), 
+                fechaCompra: admin.firestore.FieldValue.serverTimestamp(), 
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                usuarioId: uid, servicioNombre: tituloServicio, usuarioEmail: email, datosProporcionados: datosLlenos,
+                category: categoria, serviceName: tituloServicio, pricePaid: precioFinalServidor,
+                datosFormulario: datosLlenos, date: new Date().toLocaleString('es-MX'), userEmail: email, userId: uid, status: estadoFinalReal.toLowerCase(),
+                ecosistema: ecosistema
+            };
+
+            if(respuestaAdministrador !== "") {
+                ordenData.respuestaTexto = respuestaAdministrador; ordenData.notaAdjunta = respuestaAdministrador;
+            }
+            if (esAutoEntrega && cuentaInfo) {
+                ordenData.cuentaAsignada = cuentaInfo;
+            }
+
+            transaction.set(newOrderRef, ordenData);
+        });
+
+        res.json({ success: true });
+
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
