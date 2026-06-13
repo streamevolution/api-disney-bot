@@ -1000,5 +1000,91 @@ app.post('/cobrar-referido', async (req, res) => {
     }
 });
 
+
+// ==========================================
+// RUTA 14: TRANSFERENCIA DE SALDO ENTRE USUARIOS
+// ==========================================
+app.post('/transferir-saldo', async (req, res) => {
+    const { uid, email, emailDestino, monto } = req.body;
+    try {
+        const db = admin.firestore();
+        const montoInput = parseFloat(monto);
+        const comision = 10;
+        const totalADescontar = montoInput + comision;
+
+        if (montoInput < 50) throw new Error("El monto mínimo es de $50 MXN.");
+        if (email.toLowerCase() === emailDestino.toLowerCase()) throw new Error("No puedes transferirte a ti mismo.");
+
+        // 1. Buscamos al destinatario en el servidor
+        const destinatariosSnapshot = await db.collection('usuarios').where('email', '==', emailDestino.toLowerCase()).limit(1).get();
+        if (destinatariosSnapshot.empty) {
+            throw new Error("DESTINATARIO_NO_ENCONTRADO");
+        }
+        
+        const destinatarioDocRef = destinatariosSnapshot.docs[0].ref;
+        const destinatarioId = destinatariosSnapshot.docs[0].id;
+        const remitenteRef = db.collection('usuarios').doc(uid);
+
+        const historialRemitenteRef = db.collection('solicitudes_servicios').doc();
+        const historialDestinatarioRef = db.collection('solicitudes_servicios').doc();
+
+        // 2. Transacción atómica a puerta cerrada
+        await db.runTransaction(async (t) => {
+            const remitenteDoc = await t.get(remitenteRef);
+            const destDoc = await t.get(destinatarioDocRef);
+
+            if (!remitenteDoc.exists) throw new Error("Usuario remitente no encontrado.");
+            
+            const saldoRemitente = remitenteDoc.data().saldo || 0;
+            const saldoDestinatario = destDoc.data().saldo || 0;
+
+            if (saldoRemitente < totalADescontar) {
+                throw new Error("SALDO_INSUFICIENTE");
+            }
+
+            // Movemos el dinero
+            t.update(remitenteRef, { saldo: saldoRemitente - totalADescontar });
+            t.update(destinatarioDocRef, { saldo: saldoDestinatario + montoInput });
+
+            // Dejamos registro para el que envía
+            t.set(historialRemitenteRef, {
+                usuarioId: uid,
+                usuarioEmail: email,
+                servicio: "Transferencia Enviada",
+                tipo: "FINANZAS",
+                costo: totalADescontar,
+                estado: "Completado",
+                fecha: new Date().toLocaleString('es-MX'),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                datosProporcionados: {
+                    "Destinatario": emailDestino,
+                    "Monto Enviado": "$" + montoInput.toFixed(2),
+                    "Comisión": "$" + comision.toFixed(2)
+                }
+            });
+
+            // Dejamos registro para el que recibe
+            t.set(historialDestinatarioRef, {
+                usuarioId: destinatarioId,
+                usuarioEmail: emailDestino,
+                servicio: "Transferencia Recibida",
+                tipo: "FINANZAS",
+                costo: 0,
+                estado: "Completado",
+                fecha: new Date().toLocaleString('es-MX'),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                datosProporcionados: {
+                    "Remitente": email,
+                    "Monto Recibido": "$" + montoInput.toFixed(2)
+                }
+            });
+        });
+
+        res.json({ success: true, totalDescontado: totalADescontar });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
