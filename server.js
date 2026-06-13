@@ -322,11 +322,15 @@ app.post('/buscar-pago-nu', async (req, res) => {
 
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
+                    
+                    let folioUnicoNu = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + horaCorreo.replace(/:/g, '') + "-" + montoCorreoStr;
+
                     datosExtraidos = {
                         nombre: nombreCorreo,
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
-                        hora: horaCorreo
+                        hora: horaCorreo,
+                        clave_rastreo: folioUnicoNu
                     };
                     break; 
                 }
