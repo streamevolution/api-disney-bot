@@ -287,14 +287,20 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
+    // RECIBIMOS LOS 7 DATOS (Incluyendo el concepto de seguridad que inventaste)
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
     try {
+        // Blindaje absoluto: Si la página web olvida mandar el concepto, rechazamos sin crashear
+        if (!uid || !concepto || !nombre || !monto || !fecha) {
+            return res.status(400).json({ success: false, error: "Faltan datos de seguridad enviados desde la página." });
+        }
+
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
@@ -305,18 +311,16 @@ app.post('/buscar-pago-nu', async (req, res) => {
         if (messages.length > 0) {
             let pagoEncontrado = false;
             let datosExtraidos = {};
-
             const limite = Math.max(0, messages.length - 20);
             
             for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
-                
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
-                let nombreBuscado = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
-                let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
-                let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
+                let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
+                let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
+                let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
 
                 const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
                 const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
@@ -333,19 +337,16 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
 
-                // VALIDAMOS POR NOMBRE, MONTO Y FECHA (Porque Nu no manda el concepto en el correo)
+                // BUSCAMOS EN EL CORREO SOLO POR NOMBRE, MONTO Y FECHA (Nu no envía concepto)
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // PERO USAMOS EL CONCEPTO PARA BLOQUEAR LA BASE DE DATOS Y EVITAR DOBLE COBRO
-                    let folioUnicoNu = concepto ? concepto.toUpperCase() : "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
-
                     datosExtraidos = {
                         nombre: nombreCorreo,
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
                         hora: horaCorreo,
-                        clave_rastreo: folioUnicoNu
+                        clave_rastreo: String(concepto).toUpperCase().trim() // AQUÍ USAMOS TU CONCEPTO COMO CANDADO
                     };
                     break; 
                 }
@@ -357,6 +358,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
 
                 try {
+                    // EL SERVIDOR DEPOSITA EL SALDO A PUERTA CERRADA (Esquiva el Candado Maestro de Firebase)
                     await db.runTransaction(async (t) => {
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
                         const huellaDoc = await t.get(huellaRef);
@@ -376,7 +378,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
 
                         t.set(huellaRef, {
                             banco: "NU", clave_rastreo: clave, fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
-                            monto: montoNum, usuarioAcreditado: uid, emailAcreditado: emailUser, bancoOrigen: banco
+                            monto: montoNum, usuarioAcreditado: uid, emailAcreditado: emailUser, bancoOrigen: banco || "NU"
                         });
 
                         t.set(userRef, { 
@@ -389,7 +391,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         t.set(nuevoPedidoRef, {
                             usuarioId: uid, userId: uid, userEmail: emailUser, servicioNombre: "Recarga de Saldo - NU",
                             costo: montoNum, estado: "Completado", status: "completado", fecha: new Date().toLocaleString('es-MX'),
-                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: clave, bancoOrigen: banco
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: clave, bancoOrigen: banco || "NU"
                         });
                     });
                     
@@ -402,13 +404,13 @@ app.post('/buscar-pago-nu', async (req, res) => {
                     }
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto} el día ${fecha}.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto}.` });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
         }
     } catch (error) {
-        res.status(500).json({ success: false, error: "Error interno del servidor." });
+        res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
     } finally {
         if (connection) { connection.end(); }
     }
