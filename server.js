@@ -287,7 +287,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO Y ULTRA VELOZ - 2 PASOS)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO, EXACTO Y RÁPIDO)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
@@ -302,29 +302,38 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 🔥 EL ACELERADOR DEFINITIVO: BÚSQUEDA EN 2 PASOS 🔥
-        // PASO 1: Buscamos todos los correos de transferencia, pero SIN descargar el texto (toma 1 segundo)
-        const searchCriteria = [['HEADER', 'SUBJECT', 'transferencia']];
-        const fetchOptionsLigero = { bodies: ['HEADER.FIELDS (DATE)'], markSeen: false };
-        const correosLigeros = await connection.search(searchCriteria, fetchOptionsLigero);
+        // 1. TRADUCIMOS LA FECHA EXACTA QUE ESCRIBISTE (Ej: "13 JUN 2026" a "13-Jun-2026")
+        const partesFecha = String(fecha).trim().split(' ');
+        let fechaImap;
+        if (partesFecha.length === 3) {
+            let dia = partesFecha[0].padStart(2, '0');
+            let mes = partesFecha[1].charAt(0).toUpperCase() + partesFecha[1].slice(1).toLowerCase(); 
+            let anio = partesFecha[2];
+            fechaImap = `${dia}-${mes}-${anio}`;
+        } else {
+            const hoy = new Date();
+            const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
+        }
 
-        if (correosLigeros.length > 0) {
-            // PASO 2: Tomamos únicamente los últimos 15 correos (los más recientes)
-            const limite = Math.max(0, correosLigeros.length - 15);
-            const ultimosCorreos = correosLigeros.slice(limite);
-            
-            // Extraemos los IDs únicos de esos 15 correos
-            const uids = ultimosCorreos.map(m => String(m.attributes.uid));
-            
-            // PASO 3: Descargamos el texto pesado ÚNICAMENTE de esos 15 correos (toma 2 segundos)
-            const fetchOptionsPesado = { bodies: ['TEXT'], markSeen: false };
-            const messages = await connection.search([['UID', uids]], fetchOptionsPesado);
+        // 2. ACELERADOR: BUSCAMOS SOLO LOS CORREOS DE ESA FECHA EXACTA
+        const searchCriteria = [
+            ['HEADER', 'SUBJECT', 'transferencia'],
+            ['SINCE', fechaImap] 
+        ];
+        
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
 
+        if (messages.length > 0) {
             let pagoEncontrado = false;
             let datosExtraidos = {};
+            let huellaParaBloqueo = ""; // La llave maestra anti-fraude
             
-            // Analizamos del más reciente al más antiguo
-            for (let i = messages.length - 1; i >= 0; i--) {
+            // Escaneamos hasta 80 correos de ese día para NUNCA dejar uno fuera
+            const limite = Math.max(0, messages.length - 80);
+            
+            for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
@@ -348,19 +357,18 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
 
-                // Validación exacta de que el pago corresponde
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // HUELLA INQUEBRANTABLE PARA EVITAR DOBLE COBRO (Concreto: Nombre+Fecha+Monto)
-                    let huellaSegura = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
+                    // EL CANDADO INQUEBRANTABLE (Nombre + Fecha + Monto) para que nadie cobre dos veces
+                    huellaParaBloqueo = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
                         nombre: nombreCorreo,
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
                         hora: horaCorreo,
-                        clave_rastreo: huellaSegura 
+                        clave_rastreo: String(concepto).toUpperCase().trim() // Mandamos tu concepto visual a la pantalla
                     };
                     break; 
                 }
@@ -368,15 +376,15 @@ app.post('/buscar-pago-nu', async (req, res) => {
 
             if (pagoEncontrado) {
                 const db = admin.firestore();
-                const clave = datosExtraidos.clave_rastreo;
+                const claveVisual = datosExtraidos.clave_rastreo;
                 const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
 
                 try {
                     await db.runTransaction(async (t) => {
-                        const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
+                        // BLOQUEAMOS LA BASE DE DATOS USANDO LA HUELLA FUERTE (Imposible hacer trampa)
+                        const huellaRef = db.collection('huellas_bancarias_nu').doc(huellaParaBloqueo);
                         const huellaDoc = await t.get(huellaRef);
                         
-                        // Candado maestro anti-trampas
                         if (huellaDoc.exists) throw new Error("DUPLICADO");
                         
                         const userRef = db.collection('usuarios').doc(uid);
@@ -391,15 +399,16 @@ app.post('/buscar-pago-nu', async (req, res) => {
                             nuevoHistorial = totalRecargadoActual + montoNum;
                         }
 
+                        // Guardamos la huella en Firebase para "quemar" este pago
                         t.set(huellaRef, {
                             banco: "NU", 
-                            clave_rastreo: clave, 
+                            clave_rastreo: claveVisual, // Se guarda tu concepto por referencia visual
+                            huella_seguridad: huellaParaBloqueo,
                             fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
                             monto: montoNum, 
                             usuarioAcreditado: uid, 
                             emailAcreditado: emailUser, 
-                            bancoOrigen: banco || "NU",
-                            conceptoInventadoPorUsuario: concepto 
+                            bancoOrigen: banco || "NU"
                         });
 
                         t.set(userRef, { 
@@ -412,7 +421,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         t.set(nuevoPedidoRef, {
                             usuarioId: uid, userId: uid, userEmail: emailUser, servicioNombre: "Recarga de Saldo - NU",
                             costo: montoNum, estado: "Completado", status: "completado", fecha: new Date().toLocaleString('es-MX'),
-                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: concepto, bancoOrigen: banco || "NU"
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: claveVisual, bancoOrigen: banco || "NU"
                         });
                     });
                     
@@ -425,10 +434,10 @@ app.post('/buscar-pago-nu', async (req, res) => {
                     }
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto}.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto} el día ${fecha}.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No hay notificaciones recientes de transferencias.` });
+            res.json({ success: false, mensaje: `No se encontraron transferencias recientes para validar.` });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
