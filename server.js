@@ -305,7 +305,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 1. TRADUCIMOS LA FECHA EXACTA QUE ESCRIBISTE (Ej: "13 JUN 2026" a "13-Jun-2026")
+        // 1. TRADUCIMOS LA FECHA EXACTA QUE ESCRIBISTE
         const partesFecha = String(fecha).trim().split(' ');
         let fechaImap;
         if (partesFecha.length === 3) {
@@ -319,10 +319,11 @@ app.post('/buscar-pago-nu', async (req, res) => {
             fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
         }
 
-        // 2. ACELERADOR: BUSCAMOS SOLO LOS CORREOS DE ESA FECHA EXACTA
+        // 🔥 CONSEJO DEL PROGRAMADOR APLICADO: FILTRAMOS ESTRICTAMENTE EL REMITENTE "NU" 🔥
         const searchCriteria = [
-            ['HEADER', 'SUBJECT', 'transferencia'],
-            ['SINCE', fechaImap] 
+            ['FROM', 'nu'], // Solo busca correos que vengan de Nu (Ignora Didi, Facebook, etc.)
+            ['HEADER', 'SUBJECT', 'transferencia'], // Que digan transferencia
+            ['SINCE', fechaImap] // Y que sean de esta fecha
         ];
         
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
@@ -331,9 +332,8 @@ app.post('/buscar-pago-nu', async (req, res) => {
         if (messages.length > 0) {
             let pagoEncontrado = false;
             let datosExtraidos = {};
-            let huellaParaBloqueo = ""; // La llave maestra anti-fraude
+            let huellaParaBloqueo = ""; 
             
-            // Escaneamos hasta 80 correos de ese día para NUNCA dejar uno fuera
             const limite = Math.max(0, messages.length - 80);
             
             for (let i = messages.length - 1; i >= limite; i--) {
@@ -371,7 +371,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
                         hora: horaCorreo,
-                        clave_rastreo: String(concepto).toUpperCase().trim() // Mandamos tu concepto visual a la pantalla
+                        clave_rastreo: String(concepto).toUpperCase().trim() 
                     };
                     break; 
                 }
@@ -384,7 +384,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
 
                 try {
                     await db.runTransaction(async (t) => {
-                        // BLOQUEAMOS LA BASE DE DATOS USANDO LA HUELLA FUERTE (Imposible hacer trampa)
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(huellaParaBloqueo);
                         const huellaDoc = await t.get(huellaRef);
                         
@@ -402,10 +401,9 @@ app.post('/buscar-pago-nu', async (req, res) => {
                             nuevoHistorial = totalRecargadoActual + montoNum;
                         }
 
-                        // Guardamos la huella en Firebase para "quemar" este pago
                         t.set(huellaRef, {
                             banco: "NU", 
-                            clave_rastreo: claveVisual, // Se guarda tu concepto por referencia visual
+                            clave_rastreo: claveVisual, 
                             huella_seguridad: huellaParaBloqueo,
                             fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
                             monto: montoNum, 
