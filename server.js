@@ -287,10 +287,10 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    const { nombre, monto, fecha } = req.body; 
+    const { uid, emailUser, nombre, monto, fecha, banco } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
@@ -350,12 +350,66 @@ app.post('/buscar-pago-nu', async (req, res) => {
             }
 
             if (pagoEncontrado) {
-                res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+                const db = admin.firestore();
+                const clave = datosExtraidos.clave_rastreo;
+                const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
+
+                try {
+                    await db.runTransaction(async (t) => {
+                        const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
+                        const huellaDoc = await t.get(huellaRef);
+                        if (huellaDoc.exists) throw new Error("DUPLICADO");
+                        
+                        const userRef = db.collection('usuarios').doc(uid);
+                        const userDoc = await t.get(userRef);
+                        let saldoActual = 0;
+                        let totalRecargadoActual = 0;
+                        let mesProgresoActual = "";
+                        
+                        if (userDoc.exists) {
+                            saldoActual = userDoc.data().saldo || 0;
+                            totalRecargadoActual = userDoc.data().totalRecargado || 0;
+                            mesProgresoActual = userDoc.data().mesProgreso || "";
+                        }
+                        
+                        const mesActual = new Date().toISOString().slice(0, 7);
+                        let nuevoHistorial = montoNum;
+                        if (mesProgresoActual === mesActual) {
+                            nuevoHistorial = totalRecargadoActual + montoNum;
+                        }
+
+                        t.set(huellaRef, {
+                            banco: "NU", clave_rastreo: clave, fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
+                            monto: montoNum, usuarioAcreditado: uid, emailAcreditado: emailUser, bancoOrigen: banco
+                        });
+
+                        t.set(userRef, { 
+                            saldo: saldoActual + montoNum,
+                            totalRecargado: nuevoHistorial,
+                            mesProgreso: mesActual
+                        }, { merge: true });
+                        
+                        const nuevoPedidoRef = db.collection('solicitudes_servicios').doc();
+                        t.set(nuevoPedidoRef, {
+                            usuarioId: uid, userId: uid, userEmail: emailUser, servicioNombre: "Recarga de Saldo - NU",
+                            costo: montoNum, estado: "Completado", status: "completado", fecha: new Date().toLocaleString('es-MX'),
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: clave, bancoOrigen: banco
+                        });
+                    });
+                    
+                    res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+                } catch (errTx) {
+                    if (errTx.message === "DUPLICADO") {
+                        res.json({ success: false, tipo: 'duplicado', error: "Folio Duplicado." });
+                    } else {
+                        res.json({ success: false, error: "Error en BD: " + errTx.message });
+                    }
+                }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto} el día ${fecha}.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
+            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu.` });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
