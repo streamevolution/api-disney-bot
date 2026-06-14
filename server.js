@@ -28,6 +28,30 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
+// SISTEMA DE CONEXIÓN PERSISTENTE (EVITA EL POZO DE BREA DE GOOGLE)
+// ==========================================
+let conexionGlobal = null;
+
+async function obtenerConexionMantenida() {
+    // Si la conexión existe y está viva, la reutilizamos al instante
+    if (conexionGlobal && conexionGlobal.imap.state !== 'disconnected') {
+        return conexionGlobal;
+    }
+
+    // Si es la primera vez o se cayó, creamos una nueva
+    const config = obtenerConfiguracion();
+    conexionGlobal = await imaps.connect(config);
+    await conexionGlobal.openBox('INBOX');
+
+    // Si Google nos desconecta, limpiamos la variable para auto-recuperarnos
+    conexionGlobal.imap.on('error', () => { conexionGlobal = null; });
+    conexionGlobal.imap.on('end', () => { conexionGlobal = null; });
+    conexionGlobal.imap.on('close', () => { conexionGlobal = null; });
+
+    return conexionGlobal;
+}
+
+// ==========================================
 // FUNCIÓN PARA FORMATEAR LA FECHA DEL CORREO
 // ==========================================
 function formatearFecha(dateInput) {
@@ -294,22 +318,19 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO, EXACTO Y RÁPIDO)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (PERSISTENTE Y VELOZ)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
-    const config = obtenerConfiguracion();
-    let connection;
-
+    
     try {
         if (!uid || !concepto || !nombre || !monto || !fecha) {
             return res.status(400).json({ success: false, error: "Faltan datos enviados desde la página." });
         }
 
-        connection = await imaps.connect(config);
-        await connection.openBox('INBOX');
+        // LLAMAMOS AL ADMINISTRADOR PERSISTENTE (Ya no abrimos conexión nueva aquí)
+        const connection = await obtenerConexionMantenida();
 
-        // 1. TRADUCIMOS LA FECHA EXACTA QUE ESCRIBISTE
         const partesFecha = String(fecha).trim().split(' ');
         let fechaImap;
         if (partesFecha.length === 3) {
@@ -323,11 +344,10 @@ app.post('/buscar-pago-nu', async (req, res) => {
             fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
         }
 
-        // 🔥 CONSEJO DEL PROGRAMADOR APLICADO: FILTRAMOS ESTRICTAMENTE EL REMITENTE "NU" 🔥
         const searchCriteria = [
-            ['FROM', 'nu'], // Solo busca correos que vengan de Nu (Ignora Didi, Facebook, etc.)
-            ['HEADER', 'SUBJECT', 'transferencia'], // Que digan transferencia
-            ['SINCE', fechaImap] // Y que sean de esta fecha
+            ['FROM', 'nu'], 
+            ['HEADER', 'SUBJECT', 'transferencia'], 
+            ['SINCE', fechaImap] 
         ];
         
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
@@ -367,7 +387,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // EL CANDADO INQUEBRANTABLE (Nombre + Fecha + Monto) para que nadie cobre dos veces
                     huellaParaBloqueo = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
@@ -445,10 +464,11 @@ app.post('/buscar-pago-nu', async (req, res) => {
             res.json({ success: false, mensaje: `No se encontraron transferencias recientes para validar.` });
         }
     } catch (error) {
+        // Si hay error de red, matamos la conexión global para que se regenere en el próximo intento
+        conexionGlobal = null;
         res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
-    } finally {
-        if (connection) { connection.end(); }
     }
+    // ELIMINADO EL BLOQUE "FINALLY" QUE MATABA LA CONEXIÓN INTENCIONALMENTE
 });
 
 
