@@ -4,6 +4,9 @@ const imaps = require('imap-simple');
 const cors = require('cors');
 const admin = require('firebase-admin');
 
+// 🔥 FORZAR ZONA HORARIA A MÉXICO CENTRAL PARA TODO EL SERVIDOR 🔥
+process.env.TZ = 'America/Mexico_City';
+
 // 1. INICIALIZAR FIREBASE ADMIN CON SEGURIDAD
 if (!admin.apps.length) {
     admin.initializeApp({
