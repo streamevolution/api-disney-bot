@@ -287,18 +287,16 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO ANTI-FRAUDE)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    // RECIBIMOS LOS 7 DATOS (Incluyendo el concepto de seguridad que inventaste)
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
     try {
-        // Blindaje absoluto: Si la página web olvida mandar el concepto, rechazamos sin crashear
         if (!uid || !concepto || !nombre || !monto || !fecha) {
-            return res.status(400).json({ success: false, error: "Faltan datos de seguridad enviados desde la página." });
+            return res.status(400).json({ success: false, error: "Faltan datos enviados desde la página." });
         }
 
         connection = await imaps.connect(config);
@@ -337,16 +335,19 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
 
-                // BUSCAMOS EN EL CORREO SOLO POR NOMBRE, MONTO Y FECHA (Nu no envía concepto)
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
+                    // CREACIÓN DE HUELLA INQUEBRANTABLE (Ignora lo que el usuario escribió)
+                    // Une: NU-MARINALIZBETHPEREZARANDA-13JUN2026-200
+                    let huellaSegura = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
+
                     datosExtraidos = {
                         nombre: nombreCorreo,
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
                         hora: horaCorreo,
-                        clave_rastreo: String(concepto).toUpperCase().trim() // AQUÍ USAMOS TU CONCEPTO COMO CANDADO
+                        clave_rastreo: huellaSegura // La huella fuerte se va a Firebase
                     };
                     break; 
                 }
@@ -358,10 +359,11 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
 
                 try {
-                    // EL SERVIDOR DEPOSITA EL SALDO A PUERTA CERRADA (Esquiva el Candado Maestro de Firebase)
                     await db.runTransaction(async (t) => {
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
                         const huellaDoc = await t.get(huellaRef);
+                        
+                        // Si el usuario tramposo intenta cobrar de nuevo, esto lo bloquea de inmediato
                         if (huellaDoc.exists) throw new Error("DUPLICADO");
                         
                         const userRef = db.collection('usuarios').doc(uid);
@@ -376,9 +378,16 @@ app.post('/buscar-pago-nu', async (req, res) => {
                             nuevoHistorial = totalRecargadoActual + montoNum;
                         }
 
+                        // Guardamos la huella inquebrantable
                         t.set(huellaRef, {
-                            banco: "NU", clave_rastreo: clave, fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
-                            monto: montoNum, usuarioAcreditado: uid, emailAcreditado: emailUser, bancoOrigen: banco || "NU"
+                            banco: "NU", 
+                            clave_rastreo: clave, 
+                            fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
+                            monto: montoNum, 
+                            usuarioAcreditado: uid, 
+                            emailAcreditado: emailUser, 
+                            bancoOrigen: banco || "NU",
+                            conceptoInventadoPorUsuario: concepto // Guardamos el concepto solo por referencia, pero no como llave principal
                         });
 
                         t.set(userRef, { 
@@ -391,7 +400,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         t.set(nuevoPedidoRef, {
                             usuarioId: uid, userId: uid, userEmail: emailUser, servicioNombre: "Recarga de Saldo - NU",
                             costo: montoNum, estado: "Completado", status: "completado", fecha: new Date().toLocaleString('es-MX'),
-                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: clave, bancoOrigen: banco || "NU"
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: concepto, bancoOrigen: banco || "NU"
                         });
                     });
                     
@@ -415,6 +424,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
         if (connection) { connection.end(); }
     }
 });
+
 
 // ==========================================
 // RUTA 7: CRUNCHYROLL - ENLACE 
