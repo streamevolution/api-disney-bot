@@ -862,8 +862,12 @@ function obtenerConfiguracion() {
             host: 'imap.gmail.com',
             port: 993,
             tls: true,
-            tlsOptions: { rejectUnauthorized: false },
-            authTimeout: 3000
+            tlsOptions: { 
+                rejectUnauthorized: false,
+                family: 4 // 🔥 SOLUCIÓN AL TIMEOUT: Fuerza la conexión por IPv4 saltándose la espera de 90s
+            },
+            authTimeout: 5000,
+            connTimeout: 5000 // Corta la conexión muerta de inmediato
         }
     };
 }
