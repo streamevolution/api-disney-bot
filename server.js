@@ -287,10 +287,10 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO POR CONCEPTO Y SUMAR SALDO
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    const { uid, emailUser, concepto, monto, banco } = req.body; 
+    const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
@@ -314,26 +314,37 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
-                let conceptoBuscado = concepto.replace(/\s+/g, '').trim().toUpperCase();
+                let nombreBuscado = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
                 let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
+                let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
 
-                let conceptoEsExacto = textoNormalizado.includes(conceptoBuscado);
-                
-                let montoCorreoStr = "0";
+                const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
                 const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
-                if (matchMonto) {
-                    montoCorreoStr = matchMonto[1].replace(/,/g, '');
-                }
-                let montoCorreo = parseFloat(montoCorreoStr); 
-                let montoEsExacto = (montoCorreo === montoBuscado);
+                const matchFecha = textoNormalizado.match(/FECHA:\s*([0-9A-Z\s]+?)(?=\s*HORA:|$)/);
+                const matchHora = textoNormalizado.match(/HORA:\s*([0-9:]+)/);
 
-                if (conceptoEsExacto && montoEsExacto) {
+                let nombreCorreo = matchName ? matchName[1].trim() : "";
+                let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
+                let montoCorreo = parseFloat(montoCorreoStr); 
+                let fechaCorreo = matchFecha ? matchFecha[1].trim() : "";
+                let horaCorreo = matchHora ? matchHora[1].trim() : "No detectada";
+
+                let nombreEsExacto = (nombreCorreo === nombreBuscado);
+                let montoEsExacto = (montoCorreo === montoBuscado);
+                let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
+
+                // VALIDAMOS POR NOMBRE, MONTO Y FECHA (Porque Nu no manda el concepto en el correo)
+                if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
-                    let folioUnicoNu = "NU-" + conceptoBuscado + "-" + montoCorreoStr;
+                    
+                    // PERO USAMOS EL CONCEPTO PARA BLOQUEAR LA BASE DE DATOS Y EVITAR DOBLE COBRO
+                    let folioUnicoNu = concepto ? concepto.toUpperCase() : "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
-                        concepto: conceptoBuscado,
+                        nombre: nombreCorreo,
                         monto: "$" + montoCorreoStr,
+                        fecha: fechaCorreo,
+                        hora: horaCorreo,
                         clave_rastreo: folioUnicoNu
                     };
                     break; 
@@ -391,7 +402,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                     }
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto con ese concepto y monto.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto} el día ${fecha}.` });
             }
         } else {
             res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
