@@ -1170,5 +1170,74 @@ app.post('/transferir-saldo', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTA: CAJA REGISTRADORA PARA GENERADORES PDF
+// ==========================================
+app.post('/cobrar-servicio', async (req, res) => {
+    const { uid, emailUser, servicioNombre, costo, tipo, category, datosProporcionados, datosCompletos, datosFormulario } = req.body;
+    
+    try {
+        if (!uid || costo === undefined) {
+            return res.status(400).json({ success: false, error: "Datos de cobro incompletos." });
+        }
+
+        const db = admin.firestore();
+        let idGenerado = null;
+
+        await db.runTransaction(async (t) => {
+            const userRef = db.collection('usuarios').doc(uid);
+            const userDoc = await t.get(userRef);
+            
+            if (!userDoc.exists) throw new Error("Usuario no encontrado.");
+
+            const saldoActual = parseFloat(userDoc.data().saldo || 0);
+            const costoNum = parseFloat(costo);
+
+            if (saldoActual < costoNum) throw new Error("SALDO_INSUFICIENTE");
+            
+            // Descontamos el saldo en la nube
+            t.update(userRef, { saldo: saldoActual - costoNum });
+
+            // Generamos el folio
+            const reciboRef = db.collection('solicitudes_servicios').doc();
+            idGenerado = reciboRef.id;
+            
+            let ordenData = {
+                usuarioId: uid,
+                userId: uid,
+                usuarioEmail: emailUser,
+                servicioNombre: servicioNombre,
+                servicio: servicioNombre,
+                costo: costoNum,
+                precio: costoNum,
+                total: costoNum,
+                estado: "Completado",
+                status: "completado",
+                fecha: new Date().toLocaleString('es-MX'),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                fechaCompra: admin.firestore.FieldValue.serverTimestamp(),
+                tipo: tipo || "DOCUMENTOS",
+                category: category || "DOCUMENTOS"
+            };
+
+            // Guardamos los datos dependiendo de cómo los mande tu HTML
+            if (datosProporcionados) ordenData.datosProporcionados = datosProporcionados;
+            if (datosCompletos) ordenData.datosCompletos = datosCompletos;
+            if (datosFormulario) ordenData.datosFormulario = datosFormulario;
+
+            t.set(reciboRef, ordenData);
+        });
+
+        res.json({ success: true, idGenerado: idGenerado });
+    } catch (error) {
+        if (error.message === "SALDO_INSUFICIENTE") {
+            res.json({ success: false, error: "Saldo insuficiente." });
+        } else {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
