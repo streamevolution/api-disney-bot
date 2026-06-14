@@ -287,7 +287,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO ANTI-FRAUDE)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO ANTI-FRAUDE Y VELOZ)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
@@ -302,7 +302,15 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        const searchCriteria = [['HEADER', 'SUBJECT', 'transferencia']];
+        // 🔥 ACELERADOR EXTREMO: Filtro para buscar únicamente correos del día actual (margen de 24h por la zona horaria del servidor)
+        let fechaCorte = new Date();
+        fechaCorte.setDate(fechaCorte.getDate() - 1);
+
+        const searchCriteria = [
+            ['HEADER', 'SUBJECT', 'transferencia'],
+            ['SINCE', fechaCorte]
+        ];
+        
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
         const messages = await connection.search(searchCriteria, fetchOptions);
 
@@ -338,8 +346,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // CREACIÓN DE HUELLA INQUEBRANTABLE (Ignora lo que el usuario escribió)
-                    // Une: NU-MARINALIZBETHPEREZARANDA-13JUN2026-200
+                    // CREACIÓN DE HUELLA INQUEBRANTABLE
                     let huellaSegura = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
@@ -347,7 +354,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
                         hora: horaCorreo,
-                        clave_rastreo: huellaSegura // La huella fuerte se va a Firebase
+                        clave_rastreo: huellaSegura 
                     };
                     break; 
                 }
@@ -363,7 +370,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
                         const huellaDoc = await t.get(huellaRef);
                         
-                        // Si el usuario tramposo intenta cobrar de nuevo, esto lo bloquea de inmediato
                         if (huellaDoc.exists) throw new Error("DUPLICADO");
                         
                         const userRef = db.collection('usuarios').doc(uid);
@@ -378,7 +384,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
                             nuevoHistorial = totalRecargadoActual + montoNum;
                         }
 
-                        // Guardamos la huella inquebrantable
                         t.set(huellaRef, {
                             banco: "NU", 
                             clave_rastreo: clave, 
@@ -387,7 +392,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                             usuarioAcreditado: uid, 
                             emailAcreditado: emailUser, 
                             bancoOrigen: banco || "NU",
-                            conceptoInventadoPorUsuario: concepto // Guardamos el concepto solo por referencia, pero no como llave principal
+                            conceptoInventadoPorUsuario: concepto 
                         });
 
                         t.set(userRef, { 
@@ -424,6 +429,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
         if (connection) { connection.end(); }
     }
 });
+
 
 
 // ==========================================
