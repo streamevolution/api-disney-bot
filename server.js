@@ -287,7 +287,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO Y VELOZ - SOLO DÍA ACTUAL)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO Y ULTRA VELOZ)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
@@ -302,26 +302,35 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 🔥 FILTRO ESTRICTO: SOLO EL DÍA ACTUAL 🔥
-        // Convertimos tu fecha "13 JUN 2026" al formato exacto que exige IMAP "13-Jun-2026"
+        // 1. FILTRO DE FECHA: SOLO EL DÍA ACTUAL
         const partesFecha = String(fecha).trim().split(' ');
         let fechaImap;
         if (partesFecha.length === 3) {
             let dia = partesFecha[0];
-            let mes = partesFecha[1].charAt(0).toUpperCase() + partesFecha[1].slice(1).toLowerCase(); // "Jun"
+            let mes = partesFecha[1].charAt(0).toUpperCase() + partesFecha[1].slice(1).toLowerCase(); 
             let anio = partesFecha[2];
             fechaImap = `${dia}-${mes}-${anio}`;
         } else {
-            // Respaldo por si la fecha falla
             const hoy = new Date();
             const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
         }
 
-        // Ordenamos a Gmail que SOLO entregue correos de ESA fecha exacta
+        // Normalizamos los datos de búsqueda exactos
+        let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
+        let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
+        let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
+
+        // 🔥 ACELERADOR DEFINITIVO 🔥
+        // Extraemos solo el primer nombre del remitente (Ej. "MARINA") para que Gmail lo busque directamente.
+        let primerNombre = nombreBuscado.split(' ')[0];
+
+        // Ordenamos a Gmail que SOLO descargue los correos de HOY que contengan ese nombre exacto.
+        // Esto evita descargar decenas de correos y reduce el tiempo a un par de segundos.
         const searchCriteria = [
             ['HEADER', 'SUBJECT', 'transferencia'],
-            ['ON', fechaImap] 
+            ['ON', fechaImap],
+            ['BODY', primerNombre] 
         ];
         
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
@@ -336,10 +345,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 const rawBody = messages[i].parts[0].body;
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
-
-                let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
-                let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
-                let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
 
                 const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
                 const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
@@ -359,7 +364,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // CREACIÓN DE HUELLA INQUEBRANTABLE PARA EVITAR DOBLE COBRO
+                    // HUELLA INQUEBRANTABLE PARA EVITAR DOBLE COBRO
                     let huellaSegura = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
@@ -434,7 +439,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto}.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron transferencias el día de hoy.` });
+            res.json({ success: false, mensaje: `No se encontraron transferencias el día de hoy para ese usuario.` });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
