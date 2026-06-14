@@ -287,7 +287,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO ANTI-FRAUDE Y VELOZ)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO ANTI-FRAUDE Y ULTRA VELOZ)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
@@ -302,13 +302,21 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 🔥 ACELERADOR EXTREMO: Filtro para buscar únicamente correos del día actual (margen de 24h por la zona horaria del servidor)
-        let fechaCorte = new Date();
-        fechaCorte.setDate(fechaCorte.getDate() - 1);
+        // 🔥 ACELERADOR EXTREMO 🔥
+        // 1. Formateamos la fecha al estilo estricto que exige IMAP (Ej. "12-Jun-2026")
+        const ayer = new Date();
+        ayer.setDate(ayer.getDate() - 1); // Usamos 1 día de margen para evitar fallos por zona horaria
+        const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const fechaAyerImap = ayer.getDate() + "-" + mesesIMAP[ayer.getMonth()] + "-" + ayer.getFullYear();
+        
+        // 2. Extraemos el número exacto del monto para usarlo como filtro en Gmail
+        let montoFiltro = String(monto).replace(/[^0-9.]/g, '');
 
+        // 3. Obligamos a Gmail a filtrar los correos ANTES de descargarlos a Railway
         const searchCriteria = [
             ['HEADER', 'SUBJECT', 'transferencia'],
-            ['SINCE', fechaCorte]
+            ['SINCE', fechaAyerImap],
+            ['BODY', montoFiltro] // Solo descargará los correos que contengan este monto exacto
         ];
         
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
@@ -325,7 +333,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
                 let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
-                let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
+                let montoBuscado = parseFloat(montoFiltro); 
                 let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
 
                 const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
@@ -346,7 +354,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // CREACIÓN DE HUELLA INQUEBRANTABLE
+                    // CREACIÓN DE HUELLA INQUEBRANTABLE PARA EVITAR DOBLE COBRO
                     let huellaSegura = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
@@ -370,6 +378,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
                         const huellaDoc = await t.get(huellaRef);
                         
+                        // BLOQUEO INSTANTÁNEO SI LA HUELLA YA EXISTE
                         if (huellaDoc.exists) throw new Error("DUPLICADO");
                         
                         const userRef = db.collection('usuarios').doc(uid);
