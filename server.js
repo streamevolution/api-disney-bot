@@ -287,7 +287,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO Y ULTRA VELOZ)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO Y ULTRA VELOZ - 2 PASOS)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
@@ -302,49 +302,36 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 1. FILTRO DE FECHA: SOLO EL DÍA ACTUAL
-        const partesFecha = String(fecha).trim().split(' ');
-        let fechaImap;
-        if (partesFecha.length === 3) {
-            let dia = partesFecha[0];
-            let mes = partesFecha[1].charAt(0).toUpperCase() + partesFecha[1].slice(1).toLowerCase(); 
-            let anio = partesFecha[2];
-            fechaImap = `${dia}-${mes}-${anio}`;
-        } else {
-            const hoy = new Date();
-            const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
-        }
+        // 🔥 EL ACELERADOR DEFINITIVO: BÚSQUEDA EN 2 PASOS 🔥
+        // PASO 1: Buscamos todos los correos de transferencia, pero SIN descargar el texto (toma 1 segundo)
+        const searchCriteria = [['HEADER', 'SUBJECT', 'transferencia']];
+        const fetchOptionsLigero = { bodies: ['HEADER.FIELDS (DATE)'], markSeen: false };
+        const correosLigeros = await connection.search(searchCriteria, fetchOptionsLigero);
 
-        // Normalizamos los datos de búsqueda exactos
-        let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
-        let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
-        let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
+        if (correosLigeros.length > 0) {
+            // PASO 2: Tomamos únicamente los últimos 15 correos (los más recientes)
+            const limite = Math.max(0, correosLigeros.length - 15);
+            const ultimosCorreos = correosLigeros.slice(limite);
+            
+            // Extraemos los IDs únicos de esos 15 correos
+            const uids = ultimosCorreos.map(m => String(m.attributes.uid));
+            
+            // PASO 3: Descargamos el texto pesado ÚNICAMENTE de esos 15 correos (toma 2 segundos)
+            const fetchOptionsPesado = { bodies: ['TEXT'], markSeen: false };
+            const messages = await connection.search([['UID', uids]], fetchOptionsPesado);
 
-        // 🔥 ACELERADOR DEFINITIVO 🔥
-        // Extraemos solo el primer nombre del remitente (Ej. "MARINA") para que Gmail lo busque directamente.
-        let primerNombre = nombreBuscado.split(' ')[0];
-
-        // Ordenamos a Gmail que SOLO descargue los correos de HOY que contengan ese nombre exacto.
-        // Esto evita descargar decenas de correos y reduce el tiempo a un par de segundos.
-        const searchCriteria = [
-            ['HEADER', 'SUBJECT', 'transferencia'],
-            ['ON', fechaImap],
-            ['BODY', primerNombre] 
-        ];
-        
-        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
-        const messages = await connection.search(searchCriteria, fetchOptions);
-
-        if (messages.length > 0) {
             let pagoEncontrado = false;
             let datosExtraidos = {};
-            const limite = Math.max(0, messages.length - 20);
             
-            for (let i = messages.length - 1; i >= limite; i--) {
+            // Analizamos del más reciente al más antiguo
+            for (let i = messages.length - 1; i >= 0; i--) {
                 const rawBody = messages[i].parts[0].body;
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
+
+                let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
+                let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
+                let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
 
                 const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
                 const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
@@ -361,10 +348,11 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let montoEsExacto = (montoCorreo === montoBuscado);
                 let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
 
+                // Validación exacta de que el pago corresponde
                 if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
                     pagoEncontrado = true;
                     
-                    // HUELLA INQUEBRANTABLE PARA EVITAR DOBLE COBRO
+                    // HUELLA INQUEBRANTABLE PARA EVITAR DOBLE COBRO (Concreto: Nombre+Fecha+Monto)
                     let huellaSegura = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + montoCorreoStr;
 
                     datosExtraidos = {
@@ -388,6 +376,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
                         const huellaDoc = await t.get(huellaRef);
                         
+                        // Candado maestro anti-trampas
                         if (huellaDoc.exists) throw new Error("DUPLICADO");
                         
                         const userRef = db.collection('usuarios').doc(uid);
@@ -439,7 +428,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto}.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron transferencias el día de hoy para ese usuario.` });
+            res.json({ success: false, mensaje: `No hay notificaciones recientes de transferencias.` });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
