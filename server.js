@@ -287,7 +287,7 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO ANTI-FRAUDE Y ULTRA VELOZ)
+// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (SEGURO Y VELOZ - SOLO DÍA ACTUAL)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
     const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
@@ -302,21 +302,26 @@ app.post('/buscar-pago-nu', async (req, res) => {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        // 🔥 ACELERADOR EXTREMO 🔥
-        // 1. Formateamos la fecha al estilo estricto que exige IMAP (Ej. "12-Jun-2026")
-        const ayer = new Date();
-        ayer.setDate(ayer.getDate() - 1); // Usamos 1 día de margen para evitar fallos por zona horaria
-        const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const fechaAyerImap = ayer.getDate() + "-" + mesesIMAP[ayer.getMonth()] + "-" + ayer.getFullYear();
-        
-        // 2. Extraemos el número exacto del monto para usarlo como filtro en Gmail
-        let montoFiltro = String(monto).replace(/[^0-9.]/g, '');
+        // 🔥 FILTRO ESTRICTO: SOLO EL DÍA ACTUAL 🔥
+        // Convertimos tu fecha "13 JUN 2026" al formato exacto que exige IMAP "13-Jun-2026"
+        const partesFecha = String(fecha).trim().split(' ');
+        let fechaImap;
+        if (partesFecha.length === 3) {
+            let dia = partesFecha[0];
+            let mes = partesFecha[1].charAt(0).toUpperCase() + partesFecha[1].slice(1).toLowerCase(); // "Jun"
+            let anio = partesFecha[2];
+            fechaImap = `${dia}-${mes}-${anio}`;
+        } else {
+            // Respaldo por si la fecha falla
+            const hoy = new Date();
+            const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
+        }
 
-        // 3. Obligamos a Gmail a filtrar los correos ANTES de descargarlos a Railway
+        // Ordenamos a Gmail que SOLO entregue correos de ESA fecha exacta
         const searchCriteria = [
             ['HEADER', 'SUBJECT', 'transferencia'],
-            ['SINCE', fechaAyerImap],
-            ['BODY', montoFiltro] // Solo descargará los correos que contengan este monto exacto
+            ['ON', fechaImap] 
         ];
         
         const fetchOptions = { bodies: ['TEXT'], markSeen: false };
@@ -333,7 +338,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
                 let nombreBuscado = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
-                let montoBuscado = parseFloat(montoFiltro); 
+                let montoBuscado = parseFloat(String(monto).replace(/\$/g, '').replace(/,/g, '')); 
                 let fechaBuscada = String(fecha).replace(/\s+/g, ' ').trim().toUpperCase(); 
 
                 const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
@@ -378,7 +383,6 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         const huellaRef = db.collection('huellas_bancarias_nu').doc(clave);
                         const huellaDoc = await t.get(huellaRef);
                         
-                        // BLOQUEO INSTANTÁNEO SI LA HUELLA YA EXISTE
                         if (huellaDoc.exists) throw new Error("DUPLICADO");
                         
                         const userRef = db.collection('usuarios').doc(uid);
@@ -430,7 +434,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto de ${nombre} por $${monto}.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
+            res.json({ success: false, mensaje: `No se encontraron transferencias el día de hoy.` });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
