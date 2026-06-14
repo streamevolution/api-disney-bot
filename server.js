@@ -3,6 +3,10 @@ const express = require('express');
 const imaps = require('imap-simple');
 const cors = require('cors');
 const admin = require('firebase-admin');
+const dns = require('dns'); // <--- INYECTAMOS EL CONTROLADOR DE RED NATIVO
+
+// 🔥 FORZAR RED A IPv4 PARA MATAR EL TIMEOUT DE 90 SEGUNDOS 🔥
+dns.setDefaultResultOrder('ipv4first');
 
 // 🔥 FORZAR ZONA HORARIA A MÉXICO CENTRAL PARA TODO EL SERVIDOR 🔥
 process.env.TZ = 'America/Mexico_City';
