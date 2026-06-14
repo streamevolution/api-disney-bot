@@ -287,10 +287,10 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO
+// RUTA 6: NU - VERIFICAR PAGO POR CONCEPTO Y SUMAR SALDO
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    const { uid, emailUser, nombre, monto, fecha, banco } = req.body; 
+    const { uid, emailUser, concepto, monto, banco } = req.body; 
     const config = obtenerConfiguracion();
     let connection;
 
@@ -314,35 +314,26 @@ app.post('/buscar-pago-nu', async (req, res) => {
                 let textoLimpio = rawBody.replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
                 let textoNormalizado = textoLimpio.replace(/\s+/g, ' ').toUpperCase(); 
 
-                let nombreBuscado = nombre.replace(/\s+/g, ' ').trim().toUpperCase();
+                let conceptoBuscado = concepto.replace(/\s+/g, '').trim().toUpperCase();
                 let montoBuscado = parseFloat(monto.replace(/\$/g, '').replace(/,/g, '')); 
-                let fechaBuscada = fecha.replace(/\s+/g, ' ').trim().toUpperCase(); 
 
-                const matchName = textoNormalizado.match(/:\s*([A-Z\s]+)\s+HIZO UNA TRANSFERENCIA/);
+                let conceptoEsExacto = textoNormalizado.includes(conceptoBuscado);
+                
+                let montoCorreoStr = "0";
                 const matchMonto = textoNormalizado.match(/MONTO:\s*\$([0-9,.]+)/);
-                const matchFecha = textoNormalizado.match(/FECHA:\s*([0-9A-Z\s]+?)(?=\s*HORA:|$)/);
-                const matchHora = textoNormalizado.match(/HORA:\s*([0-9:]+)/);
-
-                let nombreCorreo = matchName ? matchName[1].trim() : "";
-                let montoCorreoStr = matchMonto ? matchMonto[1].replace(/,/g, '') : "0";
+                if (matchMonto) {
+                    montoCorreoStr = matchMonto[1].replace(/,/g, '');
+                }
                 let montoCorreo = parseFloat(montoCorreoStr); 
-                let fechaCorreo = matchFecha ? matchFecha[1].trim() : "";
-                let horaCorreo = matchHora ? matchHora[1].trim() : "No detectada";
-
-                let nombreEsExacto = (nombreCorreo === nombreBuscado);
                 let montoEsExacto = (montoCorreo === montoBuscado);
-                let fechaEsExacta = textoNormalizado.includes("FECHA: " + fechaBuscada); 
 
-                if (nombreEsExacto && montoEsExacto && fechaEsExacta) {
+                if (conceptoEsExacto && montoEsExacto) {
                     pagoEncontrado = true;
-                    
-                    let folioUnicoNu = "NU-" + nombreCorreo.replace(/\s+/g, '') + "-" + fechaCorreo.replace(/\s+/g, '') + "-" + horaCorreo.replace(/:/g, '') + "-" + montoCorreoStr;
+                    let folioUnicoNu = "NU-" + conceptoBuscado + "-" + montoCorreoStr;
 
                     datosExtraidos = {
-                        nombre: nombreCorreo,
+                        concepto: conceptoBuscado,
                         monto: "$" + montoCorreoStr,
-                        fecha: fechaCorreo,
-                        hora: horaCorreo,
                         clave_rastreo: folioUnicoNu
                     };
                     break; 
@@ -362,15 +353,9 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         
                         const userRef = db.collection('usuarios').doc(uid);
                         const userDoc = await t.get(userRef);
-                        let saldoActual = 0;
-                        let totalRecargadoActual = 0;
-                        let mesProgresoActual = "";
-                        
-                        if (userDoc.exists) {
-                            saldoActual = userDoc.data().saldo || 0;
-                            totalRecargadoActual = userDoc.data().totalRecargado || 0;
-                            mesProgresoActual = userDoc.data().mesProgreso || "";
-                        }
+                        let saldoActual = userDoc.exists ? (userDoc.data().saldo || 0) : 0;
+                        let totalRecargadoActual = userDoc.exists ? (userDoc.data().totalRecargado || 0) : 0;
+                        let mesProgresoActual = userDoc.exists ? (userDoc.data().mesProgreso || "") : "";
                         
                         const mesActual = new Date().toISOString().slice(0, 7);
                         let nuevoHistorial = montoNum;
@@ -406,10 +391,10 @@ app.post('/buscar-pago-nu', async (req, res) => {
                     }
                 }
             } else {
-                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto.` });
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró depósito exacto con ese concepto y monto.` });
             }
         } else {
-            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu.` });
+            res.json({ success: false, mensaje: `No se encontraron notificaciones de Nu en tu bandeja.` });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: "Error interno del servidor." });
