@@ -888,10 +888,15 @@ function obtenerConfiguracion() {
             tls: true,
             tlsOptions: { 
                 rejectUnauthorized: false,
-                family: 4 // 🔥 SOLUCIÓN AL TIMEOUT: Fuerza la conexión por IPv4 saltándose la espera de 90s
+                family: 4
             },
             authTimeout: 5000,
-            connTimeout: 5000 // Corta la conexión muerta de inmediato
+            connTimeout: 5000,
+            keepalive: {
+                interval: 10000, // Latido cada 10 segundos para matar las conexiones zombi
+                idleInterval: 10000,
+                forceNoop: true // Fuerza a que Gmail no duerma el canal
+            }
         }
     };
 }
