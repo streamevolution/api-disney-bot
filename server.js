@@ -1008,55 +1008,89 @@ app.post('/procesar-compra', async (req, res) => {
 });
 
 // ==========================================
-// RUTA 12: RECOMPENSAS DE JERARQUÍA AUTOMÁTICAS
+// RUTA 12: RECOMPENSAS DE JERARQUÍA AUTOMÁTICAS (SEGURA ANTI-F12)
 // ==========================================
 app.post('/recompensa-jerarquia', async (req, res) => {
-    const { uid, email, nivel, recompensa, nombreNivel } = req.body;
+    const { uid, email } = req.body; // Ya NO recibimos ni confiamos en el 'nivel' ni 'recompensa' del cliente
+    
     try {
         const db = admin.firestore();
         const userRef = db.collection('usuarios').doc(uid);
+        const configRef = db.collection('configuracion').doc('jerarquias_niveles');
         const pedidoRef = db.collection('solicitudes_servicios').doc();
+
+        let recompensaOtorgada = 0;
+        let nombreNivelAlcanzado = "";
 
         await db.runTransaction(async (t) => {
             const userDoc = await t.get(userRef);
+            const configDoc = await t.get(configRef);
+
             if (!userDoc.exists) throw new Error("Usuario no encontrado");
+            if (!configDoc.exists) throw new Error("Configuración de jerarquías no encontrada");
 
             let data = userDoc.data();
             let jerarquiaActual = data.jerarquiaCobrada || 0;
-            
-            if (nivel <= jerarquiaActual) {
-                throw new Error("Esta recompensa ya fue cobrada.");
+            let totalRecargado = data.totalRecargado || 0;
+            let saldoActual = data.saldo || 0;
+
+            let niveles = configDoc.data().niveles || [];
+            niveles.sort((a, b) => a.nivel - b.nivel); // Ordenar de menor a mayor
+
+            // Calculamos en el servidor qué rango le toca realmente
+            let rangoCorresponde = null;
+            for (let i = 0; i < niveles.length; i++) {
+                if (totalRecargado >= niveles[i].minimo) {
+                    rangoCorresponde = niveles[i];
+                }
             }
 
-            let saldoActual = data.saldo || 0;
-            
+            // Si no califica a nada nuevo, o ya cobró este nivel, rechazamos
+            if (!rangoCorresponde || rangoCorresponde.nivel <= jerarquiaActual) {
+                throw new Error("NO_REWARD");
+            }
+
+            recompensaOtorgada = parseFloat(rangoCorresponde.recompensa) || 0;
+            nombreNivelAlcanzado = rangoCorresponde.nombre;
+
+            // Actualizamos el saldo y el nivel de forma segura
             t.update(userRef, { 
-                saldo: saldoActual + parseFloat(recompensa),
-                jerarquiaCobrada: nivel 
+                saldo: saldoActual + recompensaOtorgada,
+                jerarquiaCobrada: rangoCorresponde.nivel 
             });
 
-            t.set(pedidoRef, {
-                servicioNombre: "Recompensa de Rango",
-                usuarioEmail: email,
-                usuarioId: uid,
-                userId: uid,
-                costo: parseFloat(recompensa), 
-                precio: parseFloat(recompensa), 
-                total: parseFloat(recompensa),
-                tipo: "FINANZAS", 
-                ecosistema: "tramites",
-                fecha: new Date().toLocaleString('es-MX'),
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                estado: "Completado", 
-                status: "completado",
-                datosProporcionados: { "Rango Alcanzado": nombreNivel, "Recompensa Acreditada": "$" + recompensa + " MXN" }
-            });
+            // Dejamos el registro de la recompensa
+            if (recompensaOtorgada > 0) {
+                t.set(pedidoRef, {
+                    servicioNombre: "Recompensa de Rango",
+                    usuarioEmail: email,
+                    usuarioId: uid,
+                    userId: uid,
+                    costo: recompensaOtorgada, 
+                    precio: recompensaOtorgada, 
+                    total: recompensaOtorgada,
+                    tipo: "FINANZAS", 
+                    ecosistema: "tramites",
+                    fecha: new Date().toLocaleString('es-MX'),
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    estado: "Completado", 
+                    status: "completado",
+                    datosProporcionados: { "Rango Alcanzado": nombreNivelAlcanzado, "Recompensa Acreditada": "$" + recompensaOtorgada + " MXN" }
+                });
+            }
         });
-        res.json({ success: true });
+
+        // Devolvemos el éxito para que el frontend dispare el confeti
+        res.json({ success: true, recompensa: recompensaOtorgada, nombreNivel: nombreNivelAlcanzado });
     } catch (error) {
-        res.json({ success: false, error: error.message });
+        if (error.message === "NO_REWARD") {
+            res.json({ success: false, code: "NO_REWARD" });
+        } else {
+            res.json({ success: false, error: error.message });
+        }
     }
 });
+
 
 // ==========================================
 // RUTA 13: COBRO Y GENERACIÓN DE REFERIDOS
