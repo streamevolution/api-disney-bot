@@ -468,10 +468,7 @@ app.post('/buscar-pago-nu', async (req, res) => {
         conexionGlobal = null;
         res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
     }
-    // ELIMINADO EL BLOQUE "FINALLY" QUE MATABA LA CONEXIÓN INTENCIONALMENTE
 });
-
-
 
 // ==========================================
 // RUTA 7: CRUNCHYROLL - ENLACE 
@@ -1011,7 +1008,7 @@ app.post('/procesar-compra', async (req, res) => {
 // RUTA 12: RECOMPENSAS DE JERARQUÍA AUTOMÁTICAS (SEGURA ANTI-F12)
 // ==========================================
 app.post('/recompensa-jerarquia', async (req, res) => {
-    const { uid, email } = req.body; // Ya NO recibimos ni confiamos en el 'nivel' ni 'recompensa' del cliente
+    const { uid, email } = req.body; 
     
     try {
         const db = admin.firestore();
@@ -1035,7 +1032,7 @@ app.post('/recompensa-jerarquia', async (req, res) => {
             let saldoActual = data.saldo || 0;
 
             let niveles = configDoc.data().niveles || [];
-            niveles.sort((a, b) => a.nivel - b.nivel); // Ordenar de menor a mayor
+            niveles.sort((a, b) => a.nivel - b.nivel); 
 
             // Calculamos en el servidor qué rango le toca realmente
             let rangoCorresponde = null;
@@ -1306,6 +1303,75 @@ app.post('/cobrar-servicio', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTA: COMPRA DE MEMBRESÍA VIP SEGURA
+// ==========================================
+app.post('/comprar-vip', async (req, res) => {
+    const { uid, email } = req.body;
+    
+    try {
+        const db = admin.firestore();
+        const userRef = db.collection('usuarios').doc(uid);
+        const configRef = db.collection('configuracion').doc('membresias_vip');
+        const pedidoRef = db.collection('solicitudes_servicios').doc();
+
+        await db.runTransaction(async (t) => {
+            const userDoc = await t.get(userRef);
+            const configDoc = await t.get(configRef);
+
+            if (!userDoc.exists) throw new Error("Usuario no encontrado");
+            if (!configDoc.exists || !configDoc.data().lista || configDoc.data().lista.length === 0) {
+                throw new Error("VIP no configurado");
+            }
+
+            const configVIP = configDoc.data().lista[0];
+            const data = userDoc.data();
+            const saldoActual = data.saldo || 0;
+
+            if (saldoActual < configVIP.costo) throw new Error("SALDO_INSUFICIENTE");
+
+            let msVencimiento = 'permanente';
+            if (configVIP.duracion !== 'permanente') {
+                let dias = parseInt(configVIP.duracion);
+                let fechaActual = (data.membresiaActiva && data.membresiaVence !== 'permanente' && data.membresiaVence > Date.now()) ? data.membresiaVence : Date.now();
+                msVencimiento = fechaActual + (dias * 24 * 60 * 60 * 1000);
+            }
+
+            // 1. Cobrar saldo y activar VIP en la base de datos
+            t.update(userRef, {
+                saldo: saldoActual - configVIP.costo,
+                membresiaActiva: true,
+                membresiaVence: msVencimiento,
+                usosGratisVIP: {} 
+            });
+
+            // 2. Registrar el ticket de la compra en el historial
+            t.set(pedidoRef, {
+                servicioNombre: "Membresía VIP: " + configVIP.nombre,
+                usuarioEmail: email,
+                usuarioId: uid,
+                userId: uid,
+                costo: configVIP.costo,
+                precio: configVIP.costo,
+                total: configVIP.costo,
+                tipo: "FINANZAS",
+                ecosistema: "tramites",
+                fecha: new Date().toLocaleString('es-MX'),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                estado: "Completado",
+                status: "completado"
+            });
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        if (error.message === "SALDO_INSUFICIENTE") {
+            res.json({ success: false, code: "SALDO_INSUFICIENTE" });
+        } else {
+            res.json({ success: false, error: error.message });
+        }
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Servidor corriendo en el puerto ${PORT}`); });
