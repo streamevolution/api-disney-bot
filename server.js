@@ -930,7 +930,7 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
             if (i === 20) waitTime = 30000; 
             if (i === 50) waitTime = 60000; 
 
-            // SE CORRIGIÓ LA URL PARA QUE LEA EL JSON CORRECTAMENTE
+            // URL CORRECTA Y VALIDADA, EXTRAÍDA DE TU BOT DE TELEGRAM
             const checkRes = await fetch('https://colores-primarios.uk/api/api.php?action=consultar', {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json', 'X-Email': 'facebook2100198@gmail.com', 'X-API-Key': 'cb64640cc9cc997769e9' },
@@ -945,23 +945,25 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
                 break;
             }
 
-            let checkData = null;
-            try { checkData = JSON.parse(checkText); } catch (e) { }
-
-            // LÓGICA DE RECHAZO EXACTA CON EL MENSAJE QUE SOLICITASTE
-            let isRechazado = checkLower.includes('rechazado') || checkLower.includes('cancelado') || checkLower.includes('inconsistencia') || checkLower.includes('errorcode');
-            
-            if (isRechazado || (checkData && (checkData.status === 'Rechazado' || checkData.status === 'Canceled'))) {
-                // Aquí se aplica el mensaje exacto inyectando la CURP del cliente
-                motivo = `El IMSS reportó inconsistencias en los datos de esta CURP: ${curp}`;
-                break;
+            // === LÓGICA DE RECHAZOS EXACTA EXTRAÍDA DE TU BOT DE TELEGRAM ===
+            if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('erronea') || checkLower.includes('rechazado') || checkLower.includes('inconsistencia') || checkLower.includes('error') || checkLower.includes('fail') || checkLower.includes('canceled') || checkLower.includes('cancelado') || checkLower.includes('subdelegacion') || checkLower.includes('subdelegación') || checkLower.includes('renapo')) {
+                if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('erronea') || checkLower.includes('renapo')) {
+                    motivo = 'El CURP ingresado no existe o no fue localizado en la Renapo. Por favor, verifica la informacion e intentalo nuevamente.';
+                } else if (checkLower.includes('subdelegacion') || checkLower.includes('subdelegación')) {
+                    motivo = 'El tramite fue rechazado: Curp requiere ir a subdelegacion. Verifica la informacion e intentalo de nuevo.';
+                } else {
+                    // AQUÍ ESTÁ EL MENSAJE PERSONALIZADO CON LA CURP INYECTADA COMO LO PEDISTE
+                    motivo = `El IMSS reportó inconsistencias en los datos de esta CURP: ${curp}`;
+                }
+                break; // ROMPE EL BUCLE Y PROCEDE AL REEMBOLSO INMEDIATO
             }
 
-            if (!checkData) continue;
+            let checkData;
+            try { checkData = JSON.parse(checkText); } catch (e) { continue; }
             
             const isSuccess = checkData.status === 'Completed' || checkData.status === 'Completado' || checkData.status === 'Success' || checkData.status === 'Exito' || checkData.status === 'exito' || checkData.status === 'éxito' || checkData.status === 'Éxito' || checkLower.includes('"exito"');
 
-            // EXTRACCIÓN ROBUSTA DE PDFs
+            // === EXTRACCIÓN ROBUSTA DE PDFs EXTRAÍDA DE TU BOT DE TELEGRAM ===
             const regexRelativo = /whatsapp\/archivos\/[a-zA-Z0-9_.-]+\.pdf/gi;
             let match;
             while ((match = regexRelativo.exec(checkText)) !== null) {
