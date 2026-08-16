@@ -930,12 +930,12 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
             if (i === 20) waitTime = 30000; 
             if (i === 50) waitTime = 60000; 
 
-                        const checkRes = await fetch('https://colores-primarios.uk/api.php?action=consultar', {
+            // SE CORRIGIÓ LA URL PARA QUE LEA EL JSON CORRECTAMENTE
+            const checkRes = await fetch('https://colores-primarios.uk/api/api.php?action=consultar', {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json', 'X-Email': 'facebook2100198@gmail.com', 'X-API-Key': 'cb64640cc9cc997769e9' },
                  body: JSON.stringify({ order_id: orderId })
             });
-
             
             const checkText = await checkRes.text();
             const checkLower = checkText.toLowerCase();
@@ -945,25 +945,23 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
                 break;
             }
 
-            // === LÓGICA DE RECHAZOS EXACTA DE TU BOT TELEGRAM ===
-            if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('erronea') || checkLower.includes('rechazado') || checkLower.includes('inconsistencia') || checkLower.includes('error') || checkLower.includes('fail') || checkLower.includes('canceled') || checkLower.includes('cancelado') || checkLower.includes('subdelegacion') || checkLower.includes('subdelegación') || checkLower.includes('renapo')) {
-                if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('erronea') || checkLower.includes('renapo')) {
-                    motivo = 'El CURP ingresado no existe o no fue localizado en la Renapo. Por favor, verifica la informacion e intentalo nuevamente.';
-                } else if (checkLower.includes('subdelegacion') || checkLower.includes('subdelegación')) {
-                    motivo = 'El tramite fue rechazado: Curp requiere ir a subdelegacion. Verifica la informacion e intentalo de nuevo.';
-                } else {
-                    // TEXTO PERSONALIZADO SOLICITADO: Inyectando la CURP exacta
-                    motivo = `El IMSS reportó inconsistencias en los datos de esta CURP: ${curp}`;
-                }
+            let checkData = null;
+            try { checkData = JSON.parse(checkText); } catch (e) { }
+
+            // LÓGICA DE RECHAZO EXACTA CON EL MENSAJE QUE SOLICITASTE
+            let isRechazado = checkLower.includes('rechazado') || checkLower.includes('cancelado') || checkLower.includes('inconsistencia') || checkLower.includes('errorcode');
+            
+            if (isRechazado || (checkData && (checkData.status === 'Rechazado' || checkData.status === 'Canceled'))) {
+                // Aquí se aplica el mensaje exacto inyectando la CURP del cliente
+                motivo = `El IMSS reportó inconsistencias en los datos de esta CURP: ${curp}`;
                 break;
             }
 
-            let checkData;
-            try { checkData = JSON.parse(checkText); } catch (e) { continue; }
+            if (!checkData) continue;
             
             const isSuccess = checkData.status === 'Completed' || checkData.status === 'Completado' || checkData.status === 'Success' || checkData.status === 'Exito' || checkData.status === 'exito' || checkData.status === 'éxito' || checkData.status === 'Éxito' || checkLower.includes('"exito"');
 
-            // === EXTRACCIÓN ROBUSTA DE PDFs DE TU BOT TELEGRAM ===
+            // EXTRACCIÓN ROBUSTA DE PDFs
             const regexRelativo = /whatsapp\/archivos\/[a-zA-Z0-9_.-]+\.pdf/gi;
             let match;
             while ((match = regexRelativo.exec(checkText)) !== null) {
@@ -1015,7 +1013,6 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
         }
 
         if (finalStatus === "Completado" && fileUrls.length > 0) {
-            // Mandar a Firebase las variables exactas para que tu historial despierte
             await orderRef.update({
                 estado: "Completado",
                 status: "completado",
@@ -1029,6 +1026,7 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
         await devolverSaldoYRechazar(orderRef, uid, costo, "Error de conexión con el proveedor externo.");
     }
 }
+
 
 // ==========================================
 // RUTA SEGURA: PROCESAR COMPRA (ANTI-F12)
