@@ -335,18 +335,28 @@ app.post('/buscar-pago-nu', async (req, res) => {
         // LLAMAMOS AL ADMINISTRADOR PERSISTENTE (Ya no abrimos conexión nueva aquí)
         const connection = await obtenerConexionMantenida();
 
-        const partesFecha = String(fecha).trim().split(' ');
+                const partesFecha = String(fecha).trim().split(' ');
         let fechaImap;
         if (partesFecha.length === 3) {
             let dia = partesFecha[0].padStart(2, '0');
-            let mes = partesFecha[1].charAt(0).toUpperCase() + partesFecha[1].slice(1).toLowerCase(); 
+            let mesEspanol = partesFecha[1].toUpperCase();
+            
+            // Traductor estricto para el protocolo IMAP
+            const diccionarioMeses = {
+                'ENE': 'Jan', 'FEB': 'Feb', 'MAR': 'Mar', 'ABR': 'Apr', 
+                'MAY': 'May', 'JUN': 'Jun', 'JUL': 'Jul', 'AGO': 'Aug', 
+                'SEP': 'Sep', 'OCT': 'Oct', 'NOV': 'Nov', 'DIC': 'Dec'
+            };
+            let mesIngles = diccionarioMeses[mesEspanol] || 'Jan';
+            
             let anio = partesFecha[2];
-            fechaImap = `${dia}-${mes}-${anio}`;
+            fechaImap = `${dia}-${mesIngles}-${anio}`;
         } else {
             const hoy = new Date();
             const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
         }
+
 
         const searchCriteria = [
             ['FROM', 'nu'], 
