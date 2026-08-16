@@ -912,7 +912,8 @@ async function devolverSaldoYRechazar(orderRef, uid, costo, motivo) {
                 const saldoActual = userDoc.data().saldo || 0;
                 t.update(userRef, { saldo: saldoActual + costo });
             }
-            t.update(orderRef, { estado: "Rechazado", status: "rechazado", motivoRechazo: motivo });
+            // Agregamos etiquetaAdmin: "Reembolsado" para imitar exactamente el botón manual de tu panel
+            t.update(orderRef, { estado: "Rechazado", status: "rechazado", motivoRechazo: motivo, etiquetaAdmin: "Reembolsado" });
         });
     } catch (e) { console.error("Error al devolver saldo:", e); }
 }
@@ -943,28 +944,65 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
                 break;
             }
 
-            if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('rechazado') || checkLower.includes('inconsistencia') || checkLower.includes('error') || checkLower.includes('fail') || checkLower.includes('cancelado')) {
-                motivo = `El IMSS reporta inconsistencias en los datos de esta CURP: ${curp}`;
+            // === LÓGICA DE RECHAZOS EXACTA DE TU BOT TELEGRAM ===
+            if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('erronea') || checkLower.includes('rechazado') || checkLower.includes('inconsistencia') || checkLower.includes('error') || checkLower.includes('fail') || checkLower.includes('canceled') || checkLower.includes('cancelado') || checkLower.includes('subdelegacion') || checkLower.includes('subdelegación') || checkLower.includes('renapo')) {
+                if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('erronea') || checkLower.includes('renapo')) {
+                    motivo = 'El CURP ingresado no existe o no fue localizado en la Renapo. Por favor, verifica la informacion e intentalo nuevamente.';
+                } else if (checkLower.includes('subdelegacion') || checkLower.includes('subdelegación')) {
+                    motivo = 'El tramite fue rechazado: Curp requiere ir a subdelegacion. Verifica la informacion e intentalo de nuevo.';
+                } else {
+                    // TEXTO PERSONALIZADO SOLICITADO: Inyectando la CURP exacta
+                    motivo = `El IMSS reportó inconsistencias en los datos de esta CURP: ${curp}`;
+                }
                 break;
             }
 
             let checkData;
             try { checkData = JSON.parse(checkText); } catch (e) { continue; }
             
-            const isSuccess = checkData.status === 'Completed' || checkData.status === 'Completado' || checkData.status === 'Success' || checkData.status === 'Exito' || checkLower.includes('"exito"');
+            const isSuccess = checkData.status === 'Completed' || checkData.status === 'Completado' || checkData.status === 'Success' || checkData.status === 'Exito' || checkData.status === 'exito' || checkData.status === 'éxito' || checkData.status === 'Éxito' || checkLower.includes('"exito"');
 
+            // === EXTRACCIÓN ROBUSTA DE PDFs DE TU BOT TELEGRAM ===
             const regexRelativo = /whatsapp\/archivos\/[a-zA-Z0-9_.-]+\.pdf/gi;
             let match;
             while ((match = regexRelativo.exec(checkText)) !== null) {
-                fileUrls.push(`https://colores-primarios.uk/${match[0]}`);
+                const link = `https://colores-primarios.uk/${match[0]}`;
+                if (!fileUrls.includes(link)) fileUrls.push(link);
             }
+
+            const buscarEnlacesArray = (obj) => {
+                if (typeof obj === 'string') {
+                    if (obj.includes('.pdf') && !obj.startsWith('http')) {
+                        let link = obj.startsWith('/') ? `https://colores-primarios.uk${obj}` : `https://colores-primarios.uk/${obj}`;
+                        if (!fileUrls.includes(link)) fileUrls.push(link);
+                    }
+                    if (obj.startsWith('http') && !obj.includes('api.php') && !obj.includes('schema.org')) {
+                        if (!fileUrls.includes(obj)) fileUrls.push(obj);
+                    }
+                    const regexHref = /href=["']([^"']+\.pdf)["']/gi;
+                    let mHref;
+                    while ((mHref = regexHref.exec(obj)) !== null) {
+                        let link = mHref[1];
+                        link = link.startsWith('http') ? link : `https://colores-primarios.uk/${link.replace(/^\//, '')}`;
+                        if (!fileUrls.includes(link)) fileUrls.push(link);
+                    }
+                }
+                if (typeof obj === 'object' && obj !== null) {
+                    for (let key in obj) {
+                        const k = key.toLowerCase();
+                        if (k === 'imagen' || k === 'icon' || k === 'logo') continue;
+                        buscarEnlacesArray(obj[key]);
+                    }
+                }
+            };
+            buscarEnlacesArray(checkData);
 
             if (fileUrls.length === 0 && isSuccess) {
                 const regexHttp = /https?:\/\/[^\s"'\\]+\.pdf/gi;
                 let matchHttp;
                 while ((matchHttp = regexHttp.exec(checkText)) !== null) {
                     if (!matchHttp[0].includes('w3.org') && !matchHttp[0].includes('schema.org')) {
-                        fileUrls.push(matchHttp[0]);
+                        if (!fileUrls.includes(matchHttp[0])) fileUrls.push(matchHttp[0]);
                     }
                 }
             }
@@ -976,10 +1014,12 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
         }
 
         if (finalStatus === "Completado" && fileUrls.length > 0) {
+            // Mandar a Firebase las variables exactas para que tu historial despierte
             await orderRef.update({
                 estado: "Completado",
                 status: "completado",
-                respuestaLink: fileUrls[0]
+                respuestaLink: fileUrls[0],
+                downloadUrl: fileUrls[0] 
             });
         } else {
             await devolverSaldoYRechazar(orderRef, uid, costo, motivo);
