@@ -265,20 +265,22 @@
             
             let payload = {};
 
-            if (plataforma === 'nu') {
+                        if (plataforma === 'nu') {
                 const fechaCruda = document.getElementById('nuFecha').value;
                 const fechaTraducida = convertirFechaNu(fechaCruda);
 
                 payload = {
                     nombre: document.getElementById('nuNombre').value,
                     monto: document.getElementById('nuMonto').value,
-                    fecha: fechaTraducida 
+                    fecha: fechaTraducida,
+                    solo_verificar: true // <--- ESTO LE DICE AL SERVIDOR QUE NO USE FIREBASE
                 };
 
                 if(!payload.nombre || !payload.monto || !fechaCruda) {
                     alert("Por favor llena Nombre, Monto y selecciona la Fecha."); return;
                 }
             } else {
+
                 payload = { email_usuario: document.getElementById('emailInput').value };
                 if(!payload.email_usuario) {
                     alert("Por favor ingresa un correo asignado."); return;
@@ -318,7 +320,7 @@
             cajaResultado.innerHTML = '<span style="color: #64748b; font-size: 14px;">Procesando...</span>';
 
             try {
-                const baseUrlRailway = 'https://api-disney-bot-production.up.railway.app'; 
+                const baseUrlRailway = 'https://api-disney-bot-production-479c.up.railway.app'; 
                 
                 const response = await fetch(baseUrlRailway + ruta, {
                     method: 'POST',
