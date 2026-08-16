@@ -930,11 +930,12 @@ async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
             if (i === 20) waitTime = 30000; 
             if (i === 50) waitTime = 60000; 
 
-            const checkRes = await fetch('https://colores-primarios.uk/api/api.php?action=consultar', {
+                        const checkRes = await fetch('https://colores-primarios.uk/api.php?action=consultar', {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json', 'X-Email': 'facebook2100198@gmail.com', 'X-API-Key': 'cb64640cc9cc997769e9' },
                  body: JSON.stringify({ order_id: orderId })
             });
+
             
             const checkText = await checkRes.text();
             const checkLower = checkText.toLowerCase();
