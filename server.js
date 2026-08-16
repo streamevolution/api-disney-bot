@@ -899,6 +899,97 @@ function obtenerConfiguracion() {
 }
 
 // ==========================================
+// LÓGICA DE MONITOREO DE API EXTERNA (SEMANAS COTIZADAS)
+// ==========================================
+const delay = ms => new Promise(res => setTimeout(res, ms));
+
+async function devolverSaldoYRechazar(orderRef, uid, costo, motivo) {
+    try {
+        await db.runTransaction(async (t) => {
+            const userRef = db.collection('usuarios').doc(uid);
+            const userDoc = await t.get(userRef);
+            if (userDoc.exists) {
+                const saldoActual = userDoc.data().saldo || 0;
+                t.update(userRef, { saldo: saldoActual + costo });
+            }
+            t.update(orderRef, { estado: "Rechazado", status: "rechazado", motivoRechazo: motivo });
+        });
+    } catch (e) { console.error("Error al devolver saldo:", e); }
+}
+
+async function monitorearOrdenExterna(orderId, curp, orderRef, uid, costo) {
+    let fileUrls = [];
+    let waitTime = 15000;
+    let finalStatus = "Rechazado";
+    let motivo = "Error desconocido al procesar el documento.";
+
+    try {
+        for (let i = 0; i < 150; i++) { 
+            await delay(waitTime);
+            if (i === 20) waitTime = 30000; 
+            if (i === 50) waitTime = 60000; 
+
+            const checkRes = await fetch('https://colores-primarios.uk/api/api.php?action=consultar', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json', 'X-Email': 'facebook2100198@gmail.com', 'X-API-Key': 'cb64640cc9cc997769e9' },
+                 body: JSON.stringify({ order_id: orderId })
+            });
+            
+            const checkText = await checkRes.text();
+            const checkLower = checkText.toLowerCase();
+
+            if (checkLower.includes('saldo') || checkLower.includes('insuficiente') || checkLower.includes('balance')) {
+                motivo = 'Error del sistema proveedor. Comunícate con el administrador.';
+                break;
+            }
+
+            if (checkLower.includes('no existe') || checkLower.includes('errónea') || checkLower.includes('rechazado') || checkLower.includes('inconsistencia') || checkLower.includes('error') || checkLower.includes('fail') || checkLower.includes('cancelado')) {
+                motivo = `El IMSS reporta inconsistencias en los datos de esta CURP: ${curp}`;
+                break;
+            }
+
+            let checkData;
+            try { checkData = JSON.parse(checkText); } catch (e) { continue; }
+            
+            const isSuccess = checkData.status === 'Completed' || checkData.status === 'Completado' || checkData.status === 'Success' || checkData.status === 'Exito' || checkLower.includes('"exito"');
+
+            const regexRelativo = /whatsapp\/archivos\/[a-zA-Z0-9_.-]+\.pdf/gi;
+            let match;
+            while ((match = regexRelativo.exec(checkText)) !== null) {
+                fileUrls.push(`https://colores-primarios.uk/${match[0]}`);
+            }
+
+            if (fileUrls.length === 0 && isSuccess) {
+                const regexHttp = /https?:\/\/[^\s"'\\]+\.pdf/gi;
+                let matchHttp;
+                while ((matchHttp = regexHttp.exec(checkText)) !== null) {
+                    if (!matchHttp[0].includes('w3.org') && !matchHttp[0].includes('schema.org')) {
+                        fileUrls.push(matchHttp[0]);
+                    }
+                }
+            }
+
+            if (fileUrls.length > 0 || isSuccess) {
+                finalStatus = "Completado";
+                break;
+            }
+        }
+
+        if (finalStatus === "Completado" && fileUrls.length > 0) {
+            await orderRef.update({
+                estado: "Completado",
+                status: "completado",
+                respuestaLink: fileUrls[0]
+            });
+        } else {
+            await devolverSaldoYRechazar(orderRef, uid, costo, motivo);
+        }
+    } catch (error) {
+        await devolverSaldoYRechazar(orderRef, uid, costo, "Error de conexión con el proveedor externo.");
+    }
+}
+
+// ==========================================
 // RUTA SEGURA: PROCESAR COMPRA (ANTI-F12)
 // ==========================================
 app.post('/procesar-compra', async (req, res) => {
@@ -994,12 +1085,38 @@ app.post('/procesar-compra', async (req, res) => {
                 ordenData.cuentaAsignada = cuentaInfo;
             }
 
-            transaction.set(newOrderRef, ordenData);
+                        transaction.set(newOrderRef, ordenData);
         });
+
+        // 🌟 INICIO INTEGRACIÓN EXTERNA (EN SEGUNDO PLANO) 🌟
+        if (tituloServicio.includes("SEMANAS COTIZADAS")) {
+            let datoCurp = datosLlenos["CURP"] || datosLlenos["curp"] || Object.values(datosLlenos)[0];
+            
+            fetch('https://colores-primarios.uk/api/api.php?action=ordenar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Email': 'facebook2100198@gmail.com', 'X-API-Key': 'cb64640cc9cc997769e9' },
+                body: JSON.stringify({ id: 11, d1: datoCurp })
+            })
+            .then(res => res.text())
+            .then(text => {
+                let data;
+                try { data = JSON.parse(text); } catch(e) {}
+                if (data && data.order_id) {
+                    // Lanzar el escáner de la API en segundo plano
+                    monitorearOrdenExterna(data.order_id, datoCurp, newOrderRef, uid, precioFinalServidor);
+                } else {
+                    devolverSaldoYRechazar(newOrderRef, uid, precioFinalServidor, "El proveedor rechazó la creación de la orden.");
+                }
+            }).catch(e => {
+                devolverSaldoYRechazar(newOrderRef, uid, precioFinalServidor, "Error de comunicación con la API externa.");
+            });
+        }
+        // 🌟 FIN INTEGRACIÓN EXTERNA 🌟
 
         res.json({ success: true });
 
     } catch (error) {
+
         res.json({ success: false, error: error.message });
     }
 });
