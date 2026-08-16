@@ -321,11 +321,15 @@ app.post('/buscar-pass-netflix', async (req, res) => {
 // RUTA 6: NU - VERIFICAR PAGO Y SUMAR SALDO (PERSISTENTE Y VELOZ)
 // ==========================================
 app.post('/buscar-pago-nu', async (req, res) => {
-    const { uid, emailUser, nombre, concepto, monto, fecha, banco } = req.body; 
+    const { uid, emailUser, nombre, concepto, monto, fecha, banco, solo_verificar } = req.body; 
     
     try {
-        if (!uid || !concepto || !nombre || !monto || !fecha) {
+        // Adaptamos el candado: si es modo consulta, relajamos las reglas
+        if (!solo_verificar && (!uid || !concepto || !nombre || !monto || !fecha)) {
             return res.status(400).json({ success: false, error: "Faltan datos enviados desde la página." });
+        }
+        if (solo_verificar && (!nombre || !monto || !fecha)) {
+            return res.status(400).json({ success: false, error: "Faltan datos para realizar la consulta." });
         }
 
         // LLAMAMOS AL ADMINISTRADOR PERSISTENTE (Ya no abrimos conexión nueva aquí)
@@ -394,13 +398,18 @@ app.post('/buscar-pago-nu', async (req, res) => {
                         monto: "$" + montoCorreoStr,
                         fecha: fechaCorreo,
                         hora: horaCorreo,
-                        clave_rastreo: String(concepto).toUpperCase().trim() 
+                        clave_rastreo: concepto ? String(concepto).toUpperCase().trim() : "MODO_CONSULTA" 
                     };
                     break; 
                 }
             }
 
             if (pagoEncontrado) {
+                // SI ESTAMOS EN MODO SOLO CONSULTA, RETORNAMOS AQUÍ Y EVITAMOS FIREBASE
+                if (solo_verificar) {
+                    return res.json({ success: true, tipo: 'pago', resultado: "Validado (Solo Consulta)", datos: datosExtraidos });
+                }
+
                 const db = admin.firestore();
                 const claveVisual = datosExtraidos.clave_rastreo;
                 const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
