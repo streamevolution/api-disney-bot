@@ -534,12 +534,22 @@ app.post('/buscar-pago-stp', async (req, res) => {
             const claveBuscadaLimpia = String(concepto).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             const montoBuscadoFloat = parseFloat(String(monto).replace(/[^0-9.]/g, ''));
 
-            for (let i = messages.length - 1; i >= limite; i--) {
+                        for (let i = messages.length - 1; i >= limite; i--) {
                 const rawBody = messages[i].parts[0].body;
+                
+                // NUEVO: Extraemos la hora exacta del correo antes de limpiar el texto
+                let horaExtraida = "Validación Automática hrs";
+                const regexHora = /([0-2][0-9]:[0-5][0-9]:[0-5][0-9])\s*h/i;
+                const matchHora = rawBody.match(regexHora);
+                if (matchHora) {
+                    horaExtraida = matchHora[1] + " hrs"; // Guardamos "14:55:40 hrs"
+                }
+
                 let textoSuperLimpio = rawBody.replace(/[^a-zA-Z0-9$.]/g, '').toUpperCase(); 
 
                 // 1. Verificamos la Clave de Rastreo (Concepto)
                 let claveEsExacta = textoSuperLimpio.includes(claveBuscadaLimpia);
+
 
                 // 2. Verificamos el Monto
                 let montoEsExacto = false;
@@ -560,13 +570,14 @@ app.post('/buscar-pago-stp', async (req, res) => {
                     pagoEncontrado = true;
                     huellaParaBloqueo = "STP-" + claveBuscadaLimpia + "-" + montoCorreoStr;
 
-                    datosExtraidos = {
+                                        datosExtraidos = {
                         nombre: "Transferencia STP",
                         monto: "$" + montoCorreoStr,
                         fecha: fecha,
-                        hora: "Validación Automática",
+                        hora: horaExtraida, // <-- AQUÍ ASIGNAMOS LA HORA EXTRAÍDA REAL
                         clave_rastreo: claveBuscadaLimpia 
                     };
+
                     break; 
                 }
             }
