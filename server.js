@@ -730,8 +730,9 @@ app.post('/buscar-codigo-spotify', async (req, res) => {
 // RUTA 11: STORI - VERIFICAR PAGO CON BANCO
 // ==========================================
 app.post('/buscar-pago-stori', async (req, res) => {
-    // AHORA RECIBIMOS LA CLAVE, EL BANCO Y EL MONTO
-    const { clave_rastreo, banco, monto } = req.body; 
+       // AHORA RECIBIMOS LA CLAVE, EL BANCO, EL MONTO Y VARIABLES DE USUARIO
+    const { clave_rastreo, banco, monto, uid, emailUser, solo_verificar } = req.body; 
+
     const config = obtenerConfiguracion();
     let connection;
 
@@ -813,13 +814,18 @@ app.post('/buscar-pago-stori', async (req, res) => {
                 }
             }
 
-            if (pagoEncontrado) {
+                        if (pagoEncontrado) {
+                // SI ESTAMOS EN MODO SOLO CONSULTA (CAPSULE SHOP), RETORNAMOS AQUÍ Y EVITAMOS FIREBASE
+                if (solo_verificar) {
+                    return res.json({ success: true, tipo: 'pago', resultado: "Validado (Solo Consulta)", datos: datosExtraidos });
+                }
+
                 // ==========================================
                 // NUEVO CANDADO DE SEGURIDAD NIVEL BANCO
                 // ==========================================
-                const uid = req.user.uid; 
-                const emailUser = req.user.email;
+                // Los datos "uid" y "emailUser" ya vienen de req.body, listos para "verificar pago.html"
                 const db = admin.firestore();
+
                 const clave = datosExtraidos.clave_rastreo;
                 
                 // Extraemos el monto REAL del correo, ignorando lo que el usuario pida
