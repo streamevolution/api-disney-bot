@@ -490,6 +490,162 @@ app.post('/buscar-pago-nu', async (req, res) => {
 });
 
 // ==========================================
+// RUTA 6.5: STP - VERIFICAR PAGO Y SUMAR SALDO (PERSISTENTE Y SEGURO)
+// ==========================================
+app.post('/buscar-pago-stp', async (req, res) => {
+    const { uid, emailUser, concepto, monto, fecha, banco, solo_verificar } = req.body; 
+    
+    try {
+        if (!solo_verificar && (!uid || !concepto || !monto || !fecha)) {
+            return res.status(400).json({ success: false, error: "Faltan datos enviados desde la página." });
+        }
+        if (solo_verificar && (!monto || !fecha || !concepto)) {
+            return res.status(400).json({ success: false, error: "Faltan datos para realizar la consulta." });
+        }
+
+        const connection = await obtenerConexionMantenida();
+
+        const partesFecha = String(fecha).trim().split(' ');
+        let fechaImap;
+        if (partesFecha.length === 3) {
+            let dia = partesFecha[0].padStart(2, '0');
+            let mesEspanol = partesFecha[1].toUpperCase();
+            const diccionarioMeses = { 'ENE': 'Jan', 'FEB': 'Feb', 'MAR': 'Mar', 'ABR': 'Apr', 'MAY': 'May', 'JUN': 'Jun', 'JUL': 'Jul', 'AGO': 'Aug', 'SEP': 'Sep', 'OCT': 'Oct', 'NOV': 'Nov', 'DIC': 'Dec' };
+            let mesIngles = diccionarioMeses[mesEspanol] || 'Jan';
+            let anio = partesFecha[2];
+            fechaImap = `${dia}-${mesIngles}-${anio}`;
+        } else {
+            const hoy = new Date();
+            const mesesIMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            fechaImap = hoy.getDate() + "-" + mesesIMAP[hoy.getMonth()] + "-" + hoy.getFullYear();
+        }
+
+        // Buscamos correos recientes (puede venir de STP, Banxico o notificaciones bancarias)
+        const searchCriteria = [['SINCE', fechaImap]];
+        const fetchOptions = { bodies: ['TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length > 0) {
+            let pagoEncontrado = false;
+            let datosExtraidos = {};
+            let huellaParaBloqueo = ""; 
+            
+            const limite = Math.max(0, messages.length - 80);
+            const claveBuscadaLimpia = String(concepto).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            const montoBuscadoFloat = parseFloat(String(monto).replace(/[^0-9.]/g, ''));
+
+            for (let i = messages.length - 1; i >= limite; i--) {
+                const rawBody = messages[i].parts[0].body;
+                let textoSuperLimpio = rawBody.replace(/[^a-zA-Z0-9$.]/g, '').toUpperCase(); 
+
+                // 1. Verificamos la Clave de Rastreo (Concepto)
+                let claveEsExacta = textoSuperLimpio.includes(claveBuscadaLimpia);
+
+                // 2. Verificamos el Monto
+                let montoEsExacto = false;
+                let montoCorreoStr = "0";
+
+                const regexMontos = /\$?([0-9]{2,}\.[0-9]{2})/g;
+                let matchMonto;
+                while ((matchMonto = regexMontos.exec(textoSuperLimpio)) !== null) {
+                    let montoEnCorreo = parseFloat(matchMonto[1]);
+                    if (montoEnCorreo === montoBuscadoFloat) {
+                        montoEsExacto = true;
+                        montoCorreoStr = matchMonto[1];
+                        break;
+                    }
+                }
+
+                if (claveEsExacta && montoEsExacto) {
+                    pagoEncontrado = true;
+                    huellaParaBloqueo = "STP-" + claveBuscadaLimpia + "-" + montoCorreoStr;
+
+                    datosExtraidos = {
+                        nombre: "Transferencia STP",
+                        monto: "$" + montoCorreoStr,
+                        fecha: fecha,
+                        hora: "Validación Automática",
+                        clave_rastreo: claveBuscadaLimpia 
+                    };
+                    break; 
+                }
+            }
+
+            if (pagoEncontrado) {
+                if (solo_verificar) {
+                    return res.json({ success: true, tipo: 'pago', resultado: "Validado (Solo Consulta)", datos: datosExtraidos });
+                }
+
+                const db = admin.firestore();
+                const claveVisual = datosExtraidos.clave_rastreo;
+                const montoNum = parseFloat(datosExtraidos.monto.replace('$', '').replace(',', ''));
+
+                try {
+                    await db.runTransaction(async (t) => {
+                        const huellaRef = db.collection('huellas_bancarias_stp').doc(huellaParaBloqueo);
+                        const huellaDoc = await t.get(huellaRef);
+                        
+                        // BLOQUEO DE DUPLICADOS: Si existe la huella, alguien ya lo cobró
+                        if (huellaDoc.exists) throw new Error("DUPLICADO");
+                        
+                        const userRef = db.collection('usuarios').doc(uid);
+                        const userDoc = await t.get(userRef);
+                        let saldoActual = userDoc.exists ? (userDoc.data().saldo || 0) : 0;
+                        let totalRecargadoActual = userDoc.exists ? (userDoc.data().totalRecargado || 0) : 0;
+                        let mesProgresoActual = userDoc.exists ? (userDoc.data().mesProgreso || "") : "";
+                        
+                        const mesActual = new Date().toISOString().slice(0, 7);
+                        let nuevoHistorial = montoNum;
+                        if (mesProgresoActual === mesActual) {
+                            nuevoHistorial = totalRecargadoActual + montoNum;
+                        }
+
+                        t.set(huellaRef, {
+                            banco: "STP", 
+                            clave_rastreo: claveVisual, 
+                            huella_seguridad: huellaParaBloqueo,
+                            fechaValidacion: admin.firestore.FieldValue.serverTimestamp(),
+                            monto: montoNum, 
+                            usuarioAcreditado: uid, 
+                            emailAcreditado: emailUser, 
+                            bancoOrigen: banco || "STP"
+                        });
+
+                        t.set(userRef, { 
+                            saldo: saldoActual + montoNum,
+                            totalRecargado: nuevoHistorial,
+                            mesProgreso: mesActual
+                        }, { merge: true });
+                        
+                        const nuevoPedidoRef = db.collection('solicitudes_servicios').doc();
+                        t.set(nuevoPedidoRef, {
+                            usuarioId: uid, userId: uid, userEmail: emailUser, servicioNombre: "Recarga de Saldo - STP",
+                            costo: montoNum, estado: "Completado", status: "completado", fecha: new Date().toLocaleString('es-MX'),
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(), tipo: "RECARGA", clave_rastreo: claveVisual, bancoOrigen: banco || "STP"
+                        });
+                    });
+                    
+                    res.json({ success: true, tipo: 'pago', resultado: "Validado", datos: datosExtraidos });
+                } catch (errTx) {
+                    if (errTx.message === "DUPLICADO") {
+                        res.json({ success: false, tipo: 'duplicado', error: "Folio Duplicado." });
+                    } else {
+                        res.json({ success: false, error: "Error en BD: " + errTx.message });
+                    }
+                }
+            } else {
+                res.json({ success: true, tipo: 'error', resultado: `No se encontró un depósito STP con la clave de rastreo ${concepto} por $${monto}.` });
+            }
+        } else {
+            res.json({ success: false, mensaje: `No se encontraron transferencias recientes para validar.` });
+        }
+    } catch (error) {
+        conexionGlobal = null;
+        res.status(500).json({ success: false, error: "Fallo en servidor: " + (error.message || error) });
+    }
+});
+
+// ==========================================
 // RUTA 7: CRUNCHYROLL - ENLACE 
 // ==========================================
 app.post('/buscar-pass-crunchyroll', async (req, res) => {
